@@ -215,35 +215,46 @@ local bypassChars = {
     ["S"] = "Ѕ", ["T"] = "Т", ["X"] = "Х", ["Y"] = "У"
 }
 
--- Script User Detection System (COMPLETE REWRITE - Server-based replication)
+-- Script User Detection System (ULTRA SIMPLIFIED WITH DEBUG)
 local scriptUsersShared = {}
-local BROADCAST_INTERVAL = 2 -- Broadcast every 2 seconds
+local BROADCAST_INTERVAL = 1 -- Broadcast every 1 second
 
 -- Create or get shared storage
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local scriptFolder = ReplicatedStorage:FindFirstChild("SerratedUsers") or Instance.new("Folder")
-scriptFolder.Name = "SerratedUsers"
-scriptFolder.Parent = ReplicatedStorage
+local scriptFolder = ReplicatedStorage:FindFirstChild("SerratedUsers")
+if not scriptFolder then
+    scriptFolder = Instance.new("Folder")
+    scriptFolder.Name = "SerratedUsers"
+    scriptFolder.Parent = ReplicatedStorage
+    print("[SERRATED] Created SerratedUsers folder in ReplicatedStorage")
+end
 
 -- Broadcast that we're using the script
 local function broadcastPresence()
-    if not character then return end
+    if not character then 
+        print("[SERRATED] No character, cannot broadcast")
+        return 
+    end
     
-    local userMarker = scriptFolder:FindFirstChild(player.UserId)
+    local userMarker = scriptFolder:FindFirstChild(tostring(player.UserId))
     if not userMarker then
         userMarker = Instance.new("StringValue")
         userMarker.Name = tostring(player.UserId)
         userMarker.Parent = scriptFolder
+        print("[SERRATED] Created marker for " .. player.Name .. " (UserId: " .. player.UserId .. ")")
     end
     
     -- Store executor and device info in the value
     userMarker.Value = EXECUTOR .. "|" .. DEVICE
+    print("[SERRATED] Broadcasting: " .. player.Name .. " - " .. userMarker.Value)
 end
 
 -- Check if a player is using the script
 local function isScriptUser(targetPlayer)
     local marker = scriptFolder:FindFirstChild(tostring(targetPlayer.UserId))
-    return marker ~= nil
+    local result = marker ~= nil
+    print("[SERRATED] Checking if " .. targetPlayer.Name .. " is script user: " .. tostring(result))
+    return result
 end
 
 -- Get player info
@@ -254,6 +265,7 @@ local function getPlayerInfo(targetPlayer)
         for part in marker.Value:gmatch("[^|]+") do
             table.insert(parts, part)
         end
+        print("[SERRATED] Got info for " .. targetPlayer.Name .. ": " .. marker.Value)
         return {
             executor = parts[1] or "Unknown",
             device = parts[2] or "Unknown"
@@ -268,6 +280,7 @@ spawn(function()
         broadcastPresence()
         wait(BROADCAST_INTERVAL)
     end
+    print("[SERRATED] Stopped broadcasting - script no longer active")
 end)
 
 -- UI Creation
@@ -398,18 +411,36 @@ end
 
 -- User Card with Typing Animation and Cursor
 local function createUserCard(targetPlayer)
-    if not isScriptUser(targetPlayer) then return end
+    print("[SERRATED] createUserCard called for: " .. targetPlayer.Name)
+    
+    if not isScriptUser(targetPlayer) then 
+        print("[SERRATED] Player " .. targetPlayer.Name .. " is NOT a script user, aborting card creation")
+        return 
+    end
     
     local targetCharacter = targetPlayer.Character
-    if not targetCharacter then return end
+    if not targetCharacter then 
+        print("[SERRATED] Player " .. targetPlayer.Name .. " has no character")
+        return 
+    end
     
     local head = targetCharacter:FindFirstChild("Head")
-    if not head then return end
+    if not head then 
+        print("[SERRATED] Player " .. targetPlayer.Name .. " has no head")
+        return 
+    end
     
     local existingCard = head:FindFirstChild("UserCard")
-    if existingCard then existingCard:Destroy() end
+    if existingCard then 
+        print("[SERRATED] Destroying existing card for " .. targetPlayer.Name)
+        existingCard:Destroy() 
+    end
+    
+    print("[SERRATED] Creating overhead card for " .. targetPlayer.Name)
     
     local playerInfo = getPlayerInfo(targetPlayer)
+    
+    print("[SERRATED] Player info - Executor: " .. playerInfo.executor .. ", Device: " .. playerInfo.device)
     
     local billboardGui = Instance.new("BillboardGui")
     billboardGui.Name = "UserCard"
@@ -528,21 +559,34 @@ local function createUserCard(targetPlayer)
         Size = UDim2.new(1, 0, 1, 0),
         Position = UDim2.new(0.5, 0, 0.5, 0)
     }, 0.6)
+    
+    print("[SERRATED] ✓ Successfully created overhead card for " .. targetPlayer.Name)
 end
 
 -- Monitor script users (REWRITTEN - Watches ReplicatedStorage)
 local function monitorScriptUsers()
+    print("[SERRATED] Starting monitoring system...")
+    
     -- Listen for new users joining
     scriptFolder.ChildAdded:Connect(function(child)
         if not scriptActive then return end
+        print("[SERRATED] New marker detected: " .. child.Name)
         wait(0.1)
         
         local userId = tonumber(child.Name)
         if userId then
             local targetPlayer = Players:GetPlayerByUserId(userId)
-            if targetPlayer and targetPlayer.Character then
-                scriptUsers[userId] = true
-                createUserCard(targetPlayer)
+            if targetPlayer then
+                print("[SERRATED] Found player for marker: " .. targetPlayer.Name)
+                if targetPlayer.Character then
+                    scriptUsers[userId] = true
+                    print("[SERRATED] Attempting to create card for " .. targetPlayer.Name)
+                    createUserCard(targetPlayer)
+                else
+                    print("[SERRATED] Player " .. targetPlayer.Name .. " has no character yet")
+                end
+            else
+                print("[SERRATED] Could not find player for UserId: " .. userId)
             end
         end
     end)
@@ -550,6 +594,7 @@ local function monitorScriptUsers()
     -- Listen for users leaving
     scriptFolder.ChildRemoved:Connect(function(child)
         if not scriptActive then return end
+        print("[SERRATED] Marker removed: " .. child.Name)
         
         local userId = tonumber(child.Name)
         if userId then
@@ -559,33 +604,43 @@ local function monitorScriptUsers()
                 local head = targetPlayer.Character:FindFirstChild("Head")
                 if head then
                     local card = head:FindFirstChild("UserCard")
-                    if card then card:Destroy() end
+                    if card then 
+                        card:Destroy() 
+                        print("[SERRATED] Removed card for " .. targetPlayer.Name)
+                    end
                 end
             end
         end
     end)
     
     -- Initial scan for existing script users
+    print("[SERRATED] Scanning for existing markers...")
     for _, marker in ipairs(scriptFolder:GetChildren()) do
         local userId = tonumber(marker.Name)
         if userId then
             local targetPlayer = Players:GetPlayerByUserId(userId)
-            if targetPlayer and targetPlayer.Character then
-                scriptUsers[userId] = true
-                createUserCard(targetPlayer)
+            if targetPlayer then
+                print("[SERRATED] Found existing user: " .. targetPlayer.Name)
+                if targetPlayer.Character then
+                    scriptUsers[userId] = true
+                    createUserCard(targetPlayer)
+                end
             end
         end
     end
     
     -- Heartbeat to ensure cards stay created
+    print("[SERRATED] Starting heartbeat monitor...")
     RunService.Heartbeat:Connect(function()
         if not scriptActive then return end
+        
         for _, targetPlayer in ipairs(Players:GetPlayers()) do
             if isScriptUser(targetPlayer) then
                 if not scriptUsers[targetPlayer.UserId] then
                     scriptUsers[targetPlayer.UserId] = true
                     if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
                         if not targetPlayer.Character.Head:FindFirstChild("UserCard") then
+                            print("[SERRATED] Heartbeat creating card for " .. targetPlayer.Name)
                             createUserCard(targetPlayer)
                         end
                     end
@@ -601,6 +656,8 @@ local function monitorScriptUsers()
             end
         end
     end)
+    
+    print("[SERRATED] Monitoring system active!")
 end
 
 -- FPS Counter
@@ -2056,6 +2113,24 @@ local function executeCommand(commandText)
         updateScript()
     elseif command == "users" then
         listScriptUsers()
+    elseif command == "debug" then
+        -- DEBUG COMMAND - Manually check and create cards
+        showNotification("Running debug check...", "info")
+        print("[SERRATED] === DEBUG COMMAND EXECUTED ===")
+        print("[SERRATED] Markers in ReplicatedStorage:")
+        for _, marker in ipairs(scriptFolder:GetChildren()) do
+            print("  - " .. marker.Name .. " = " .. marker.Value)
+        end
+        print("[SERRATED] Players in game:")
+        for _, p in ipairs(Players:GetPlayers()) do
+            local isUser = isScriptUser(p)
+            print("  - " .. p.Name .. " (UserId: " .. p.UserId .. ") | Script User: " .. tostring(isUser))
+            if isUser and p.Character then
+                createUserCard(p)
+            end
+        end
+        print("[SERRATED] === DEBUG COMPLETE ===")
+        showNotification("Debug complete - check console", "info")
     elseif command == "unexecute" then
         unexecute()
     elseif command == "help" then
@@ -2120,8 +2195,18 @@ else
 end
 commandStates.originalGravity = workspace.Gravity
 
+print("[SERRATED] ==========================================")
+print("[SERRATED] Initializing for player: " .. player.Name)
+print("[SERRATED] UserId: " .. player.UserId)
+print("[SERRATED] Executor: " .. EXECUTOR)
+print("[SERRATED] Device: " .. DEVICE)
+print("[SERRATED] ==========================================")
+
 broadcastPresence() -- Initial broadcast
+print("[SERRATED] Initial broadcast complete")
+
 monitorScriptUsers()
+print("[SERRATED] Monitoring started")
 
 -- Character respawn handling
 player.CharacterAdded:Connect(function(newChar)
