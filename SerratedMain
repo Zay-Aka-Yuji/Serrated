@@ -393,16 +393,15 @@ end
 -- User Card with Typing Animation and Cursor (FIXED - Now properly creates for all users)
 local function createUserCard(targetPlayer)
     if not scriptActive then return end
-    if not targetPlayer or targetPlayer == player then return end -- Don't create card for self
+    if not targetPlayer then return end
     
     -- Wait for character to load
     local targetCharacter = targetPlayer.Character
     if not targetCharacter then
-        targetPlayer.CharacterAdded:Wait()
-        targetCharacter = targetPlayer.Character
+        return
     end
     
-    local head = targetCharacter:WaitForChild("Head", 5)
+    local head = targetCharacter:FindFirstChild("Head")
     if not head then return end
     
     -- Remove existing card if present
@@ -535,11 +534,11 @@ end
 
 -- Monitor script users (IMPROVED - Better detection and card creation)
 local function monitorScriptUsers()
-    -- Initial scan
+    -- Initial scan - create cards for all existing script users
     for _, targetPlayer in ipairs(Players:GetPlayers()) do
-        if targetPlayer ~= player and targetPlayer.Character then
+        if targetPlayer.Character then
             spawn(function()
-                wait(1) -- Give time for identifier to replicate
+                wait(1.5) -- Give time for identifier to replicate across network
                 if isScriptUser(targetPlayer) then
                     scriptUsers[targetPlayer.UserId] = true
                     createUserCard(targetPlayer)
@@ -553,31 +552,29 @@ local function monitorScriptUsers()
         if not scriptActive then return end
         
         for _, targetPlayer in ipairs(Players:GetPlayers()) do
-            if targetPlayer ~= player then
-                local isUser = isScriptUser(targetPlayer)
-                local wasUser = scriptUsers[targetPlayer.UserId]
-                
-                -- User just became a script user
-                if isUser and not wasUser then
-                    scriptUsers[targetPlayer.UserId] = true
-                    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
-                        if not targetPlayer.Character.Head:FindFirstChild("UserCard") then
-                            createUserCard(targetPlayer)
-                        end
+            local isUser = isScriptUser(targetPlayer)
+            local wasUser = scriptUsers[targetPlayer.UserId]
+            
+            -- User just became a script user
+            if isUser and not wasUser then
+                scriptUsers[targetPlayer.UserId] = true
+                if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+                    if not targetPlayer.Character.Head:FindFirstChild("UserCard") then
+                        createUserCard(targetPlayer)
                     end
-                -- User stopped being a script user
-                elseif not isUser and wasUser then
-                    scriptUsers[targetPlayer.UserId] = nil
-                    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
-                        local card = targetPlayer.Character.Head:FindFirstChild("UserCard")
-                        if card then card:Destroy() end
-                    end
-                -- User is still a script user but card might be missing
-                elseif isUser and wasUser then
-                    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
-                        if not targetPlayer.Character.Head:FindFirstChild("UserCard") then
-                            createUserCard(targetPlayer)
-                        end
+                end
+            -- User stopped being a script user
+            elseif not isUser and wasUser then
+                scriptUsers[targetPlayer.UserId] = nil
+                if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+                    local card = targetPlayer.Character.Head:FindFirstChild("UserCard")
+                    if card then card:Destroy() end
+                end
+            -- User is still a script user but card might be missing
+            elseif isUser and wasUser then
+                if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+                    if not targetPlayer.Character.Head:FindFirstChild("UserCard") then
+                        createUserCard(targetPlayer)
                     end
                 end
             end
@@ -2132,8 +2129,8 @@ end)
 Players.PlayerAdded:Connect(function(newPlayer)
     if not scriptActive then return end
     newPlayer.CharacterAdded:Connect(function()
-        wait(1)
-        if isScriptUser(newPlayer) and scriptActive and newPlayer ~= player then
+        wait(1.5)
+        if isScriptUser(newPlayer) and scriptActive then
             createUserCard(newPlayer)
         end
     end)
@@ -2141,9 +2138,9 @@ end)
 
 -- Existing player handling
 for _, existingPlayer in ipairs(Players:GetPlayers()) do
-    if existingPlayer ~= player and existingPlayer.Character then
+    if existingPlayer.Character then
         spawn(function()
-            wait(1)
+            wait(1.5)
             if isScriptUser(existingPlayer) and scriptActive then
                 createUserCard(existingPlayer)
             end
@@ -2152,8 +2149,8 @@ for _, existingPlayer in ipairs(Players:GetPlayers()) do
     
     existingPlayer.CharacterAdded:Connect(function()
         if not scriptActive then return end
-        wait(1)
-        if isScriptUser(existingPlayer) and existingPlayer ~= player then
+        wait(1.5)
+        if isScriptUser(existingPlayer) then
             createUserCard(existingPlayer)
         end
     end)
