@@ -1,7 +1,7 @@
 --[[
     $errated Emotes - Advanced Roblox Emote Script
-    Features: Modern UI, Smooth Animations, Full Emote Catalog, Favorites, Speed Control
-    Fixed Version with Full Functionality
+    Features: Modern UI, Smooth Animations, FULL Emote Catalog, Favorites, Speed Control
+    IMPROVED VERSION - Fetches ALL emotes from catalog with multiple search strategies
 ]]
 
 -- Services
@@ -588,7 +588,7 @@ local function GetRealAnimationId(id)
     return id
 end
 
--- EMOTE PLAYBACK FUNCTIONS (Based on Gaze Emotes working implementation)
+-- EMOTE PLAYBACK FUNCTIONS
 local function LoadAndPlayEmote(id)
     if CurrentEmote then 
         CurrentEmote:Stop(Config.FadeOut) 
@@ -626,7 +626,6 @@ local function LoadAndPlayEmote(id)
         end
     end
     
-    -- Set running state based on MoveWhileEmoting setting
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, Config.MoveWhileEmoting)
     
     newTrack:Play(Config.FadeIn, weight, Config.EmoteSpeed)
@@ -674,23 +673,57 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- CATALOG SCRAPING FUNCTIONS
+-- IMPROVED CATALOG SCRAPING - MULTIPLE STRATEGIES
 local sortModes = {
     {Enum.CatalogSortType.Relevance, "Relevance"},
     {Enum.CatalogSortType.MostFavorited, "Most Favorited"},
     {Enum.CatalogSortType.RecentlyCreated, "Recently Created"},
     {Enum.CatalogSortType.Bestselling, "Bestselling"},
 }
-local currentSortIndex = 1
 
-local function GetCatalogPages(keyword)
+-- Comprehensive keyword list for emote discovery
+local searchKeywords = {
+    "", -- Empty search gets general results
+    "dance", "emote", "animation",
+    "wave", "point", "cheer", "clap",
+    "sit", "lay", "sleep", "rest",
+    "jump", "flip", "spin", "twirl",
+    "laugh", "cry", "angry", "sad",
+    "happy", "excited", "celebrate",
+    "pose", "stance", "idle",
+    "walk", "run", "march",
+    "bow", "salute", "pray",
+    "think", "wonder", "confused",
+    "victory", "win", "champion",
+    "defeat", "lose", "fail",
+    "ninja", "warrior", "fight",
+    "magic", "spell", "summon",
+    "hero", "super", "power",
+    "silly", "funny", "goofy",
+    "cool", "swag", "flex",
+    "cute", "adorable", "sweet",
+    "scary", "spooky", "creepy",
+    "party", "festival", "concert",
+    "sports", "athletic", "exercise",
+    "yoga", "stretch", "meditate",
+    "groovy", "funky", "disco",
+    "robot", "mech", "mechanical",
+    "zombie", "undead", "monster",
+    "royal", "noble", "elegant",
+    "pirate", "sailor", "sea",
+    "space", "astronaut", "galaxy",
+    "tiktok", "viral", "trend",
+    "meme", "popular", "famous"
+}
+
+local function GetCatalogPages(keyword, sortType)
     local params = CatalogSearchParams.new()
     params.SearchKeyword = keyword or ""
     params.CategoryFilter = Enum.CatalogCategoryFilter.None
     params.SalesTypeFilter = Enum.SalesTypeFilter.All
     params.AssetTypes = { Enum.AvatarAssetType.EmoteAnimation }
     params.IncludeOffSale = true
-    params.SortType = sortModes[currentSortIndex][1]
+    params.SortType = sortType or Enum.CatalogSortType.Relevance
     params.Limit = 30
     
     local ok, pages = pcall(function()
@@ -705,68 +738,144 @@ end
 
 local function FetchEmotesFromCatalog()
     local allEmotes = {}
-    local pagesFetched = 0
-    local maxPages = 10 -- Fetch 10 pages for good variety
+    local emoteIds = {} -- Track unique IDs to avoid duplicates
+    local totalFetched = 0
     
     IsLoadingEmotes = true
     LoadingIndicator.Visible = true
     LoadingIndicator.Text = "Loading catalog..."
     
-    print("[$errated] Starting catalog fetch...")
+    print("[$errated] Starting comprehensive catalog fetch...")
+    print("[$errated] Using multiple search strategies...")
     
-    local pages = GetCatalogPages("")
-    if not pages then
-        print("[$errated] Failed to get catalog pages")
-        IsLoadingEmotes = false
-        LoadingIndicator.Visible = false
-        return allEmotes
-    end
-    
-    while pagesFetched < maxPages do
-        local success, currentList = pcall(function() 
-            return pages:GetCurrentPage() 
-        end)
+    -- Strategy 1: Fetch from different sort modes with empty keyword
+    for sortIndex, sortData in ipairs(sortModes) do
+        local sortType, sortName = sortData[1], sortData[2]
+        LoadingIndicator.Text = string.format("Searching: %s...", sortName)
         
-        if success and currentList and #currentList > 0 then
-            for _, item in ipairs(currentList) do
-                local realId = GetRealAnimationId(item.Id)
-                
-                table.insert(allEmotes, {
-                    Name = item.Name or "Unknown Emote",
-                    Id = item.Id,
-                    AssetId = item.AssetId or item.Id,
-                    AnimationId = "rbxassetid://" .. tostring(realId),
-                    Creator = item.CreatorName or "Roblox"
-                })
-            end
+        local pages = GetCatalogPages("", sortType)
+        if pages then
+            local pageCount = 0
+            local maxPagesPerSort = 20 -- Increased from 10
             
-            LoadingIndicator.Text = string.format("Loaded %d emotes...", #allEmotes)
-            pagesFetched = pagesFetched + 1
-            
-            -- Try to advance to next page
-            if not pages.IsFinished then
-                local advanceSuccess = pcall(function()
-                    pages:AdvanceToNextPageAsync()
+            while pageCount < maxPagesPerSort do
+                local success, currentList = pcall(function() 
+                    return pages:GetCurrentPage() 
                 end)
-                if not advanceSuccess then
+                
+                if success and currentList and #currentList > 0 then
+                    for _, item in ipairs(currentList) do
+                        if not emoteIds[item.Id] then
+                            emoteIds[item.Id] = true
+                            local realId = GetRealAnimationId(item.Id)
+                            
+                            table.insert(allEmotes, {
+                                Name = item.Name or "Unknown Emote",
+                                Id = item.Id,
+                                AssetId = item.AssetId or item.Id,
+                                AnimationId = "rbxassetid://" .. tostring(realId),
+                                Creator = item.CreatorName or "Roblox"
+                            })
+                            totalFetched = totalFetched + 1
+                        end
+                    end
+                    
+                    LoadingIndicator.Text = string.format("%s: %d emotes", sortName, totalFetched)
+                    pageCount = pageCount + 1
+                    
+                    if not pages.IsFinished then
+                        local advanceSuccess = pcall(function()
+                            pages:AdvanceToNextPageAsync()
+                        end)
+                        if not advanceSuccess then
+                            break
+                        end
+                        wait(0.2) -- Reduced wait time
+                    else
+                        break
+                    end
+                else
                     break
                 end
-                wait(0.3) -- Rate limiting
-            else
-                break
+                
+                RunService.RenderStepped:Wait()
             end
-        else
-            break
         end
         
-        -- Let UI update
-        RunService.RenderStepped:Wait()
+        wait(0.3)
     end
     
-    print(string.format("[$errated] Loaded %d emotes from catalog", #allEmotes))
+    -- Strategy 2: Search with specific keywords
+    LoadingIndicator.Text = "Searching keywords..."
+    for i, keyword in ipairs(searchKeywords) do
+        if i % 5 == 0 then
+            LoadingIndicator.Text = string.format("Keywords: %d/%d (%d emotes)", i, #searchKeywords, totalFetched)
+        end
+        
+        local pages = GetCatalogPages(keyword, Enum.CatalogSortType.Relevance)
+        if pages then
+            local pageCount = 0
+            local maxPagesPerKeyword = 5 -- Fetch 5 pages per keyword
+            
+            while pageCount < maxPagesPerKeyword do
+                local success, currentList = pcall(function() 
+                    return pages:GetCurrentPage() 
+                end)
+                
+                if success and currentList and #currentList > 0 then
+                    for _, item in ipairs(currentList) do
+                        if not emoteIds[item.Id] then
+                            emoteIds[item.Id] = true
+                            local realId = GetRealAnimationId(item.Id)
+                            
+                            table.insert(allEmotes, {
+                                Name = item.Name or "Unknown Emote",
+                                Id = item.Id,
+                                AssetId = item.AssetId or item.Id,
+                                AnimationId = "rbxassetid://" .. tostring(realId),
+                                Creator = item.CreatorName or "Roblox"
+                            })
+                            totalFetched = totalFetched + 1
+                        end
+                    end
+                    
+                    pageCount = pageCount + 1
+                    
+                    if not pages.IsFinished then
+                        local advanceSuccess = pcall(function()
+                            pages:AdvanceToNextPageAsync()
+                        end)
+                        if not advanceSuccess then
+                            break
+                        end
+                    else
+                        break
+                    end
+                else
+                    break
+                end
+                
+                RunService.RenderStepped:Wait()
+            end
+        end
+        
+        -- Small delay between keyword searches
+        if i % 10 == 0 then
+            wait(0.5)
+        end
+    end
+    
+    print(string.format("[$errated] Loaded %d unique emotes from catalog", #allEmotes))
+    print("[$errated] Fetch complete!")
     
     IsLoadingEmotes = false
     LoadingIndicator.Visible = false
+    LoadingIndicator.Text = string.format("Loaded %d emotes!", #allEmotes)
+    
+    spawn(function()
+        wait(3)
+        LoadingIndicator.Visible = false
+    end)
     
     return allEmotes
 end
@@ -827,7 +936,6 @@ local function CreateEmoteButton(parent, emote)
     playCorner.CornerRadius = UDim.new(0, 6)
     playCorner.Parent = playBtn
     
-    -- Button hover effect
     button.MouseEnter:Connect(function()
         SmoothTween(button, {BackgroundColor3 = Color3.fromRGB(40, 40, 45)}, 0.2)
     end)
@@ -836,7 +944,6 @@ local function CreateEmoteButton(parent, emote)
         SmoothTween(button, {BackgroundColor3 = Color3.fromRGB(30, 30, 35)}, 0.2)
     end)
     
-    -- Play button
     playBtn.MouseButton1Click:Connect(function()
         LoadAndPlayEmote(emote.Id)
         SmoothTween(playBtn, {BackgroundColor3 = Color3.fromRGB(75, 0, 130)}, 0.1)
@@ -844,7 +951,6 @@ local function CreateEmoteButton(parent, emote)
         SmoothTween(playBtn, {BackgroundColor3 = Color3.fromRGB(138, 43, 226)}, 0.1)
     end)
     
-    -- Favorite button
     favoriteBtn.MouseButton1Click:Connect(function()
         local isFavorited = table.find(Config.FavoriteEmotes, emote.Id)
         if isFavorited then
@@ -856,7 +962,6 @@ local function CreateEmoteButton(parent, emote)
         end
         SaveConfig()
         
-        -- Refresh favorites page
         for _, child in ipairs(FavoritesScrollFrame:GetChildren()) do
             if child:IsA("TextButton") then
                 child:Destroy()
@@ -1063,7 +1168,6 @@ CreateSliderSetting("Weight", "Weight", 0, 1, 6)
 CreateSliderSetting("Fade In", "FadeIn", 0, 2, 7)
 CreateSliderSetting("Fade Out", "FadeOut", 0, 2, 8)
 
--- Update canvas size for settings
 SettingsScrollFrame.CanvasSize = UDim2.new(0, 0, 0, SettingsListLayout.AbsoluteContentSize.Y + 10)
 SettingsListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     SettingsScrollFrame.CanvasSize = UDim2.new(0, 0, 0, SettingsListLayout.AbsoluteContentSize.Y + 10)
@@ -1074,22 +1178,18 @@ local function LoadAllEmotes()
     EmotesList = FetchEmotesFromCatalog()
     FilteredEmotes = EmotesList
     
-    -- Clear existing buttons
     for _, child in ipairs(EmotesScrollFrame:GetChildren()) do
         if child:IsA("TextButton") then
             child:Destroy()
         end
     end
     
-    -- Populate browse page
     for _, emote in ipairs(EmotesList) do
         CreateEmoteButton(EmotesScrollFrame, emote)
     end
     
-    -- Update canvas size
     EmotesScrollFrame.CanvasSize = UDim2.new(0, 0, 0, EmotesListLayout.AbsoluteContentSize.Y + 10)
     
-    -- Populate favorites page
     for _, emote in ipairs(EmotesList) do
         if table.find(Config.FavoriteEmotes, emote.Id) then
             CreateEmoteButton(FavoritesScrollFrame, emote)
@@ -1099,7 +1199,6 @@ local function LoadAllEmotes()
     FavoritesScrollFrame.CanvasSize = UDim2.new(0, 0, 0, FavoritesListLayout.AbsoluteContentSize.Y + 10)
 end
 
--- Update canvas sizes
 EmotesListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     EmotesScrollFrame.CanvasSize = UDim2.new(0, 0, 0, EmotesListLayout.AbsoluteContentSize.Y + 10)
 end)
@@ -1161,4 +1260,5 @@ end)
 
 print("[$errated Emotes] Loaded successfully!")
 print("[$errated Emotes] Press " .. Config.ToggleKey.Name .. " to toggle UI")
-print("[$errated Emotes] Loading full emote catalog...")
+print("[$errated Emotes] Starting COMPREHENSIVE catalog fetch...")
+print("[$errated Emotes] This will take a bit longer but will get MANY more emotes!")
