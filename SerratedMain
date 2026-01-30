@@ -149,6 +149,8 @@ local commandList = {
     {cmd = "!spin", desc = "Spin character", requiresUsername = false},
     {cmd = "!unspin", desc = "Stop spinning", requiresUsername = false},
     {cmd = "!spinspeed", desc = "Set spin speed", requiresUsername = false, requiresNumber = true},
+    {cmd = "!emotecatalog", desc = "Open emote catalog", requiresUsername = false},
+    {cmd = "!emc", desc = "Open emote catalog", requiresUsername = false},
     {cmd = "!update", desc = "Update script", requiresUsername = false},
     {cmd = "!updt", desc = "Update script", requiresUsername = false},
     {cmd = "!unexecute", desc = "Remove script", requiresUsername = false},
@@ -914,6 +916,7 @@ FUN:
 !spin - Spin character
 !unspin - Stop spinning
 !spinspeed [number] - Set spin speed
+!emotecatalog / !emc - Open emote catalog
 
 CHAT & PROTECTION:
 !cb / !chatbypass - Toggle chat bypass
@@ -1578,6 +1581,22 @@ local function disableSpin()
     showNotification("Spinning disabled!", "success")
 end
 
+-- EMOTE CATALOG
+local function openEmoteCatalog()
+    showNotification("Loading $errated Emotes...", "info")
+    
+    local success, error = pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Zay-Aka-Yuji/Serrated/refs/heads/main/Serrated%20Emotes"))()
+    end)
+    
+    if success then
+        showNotification("Emote catalog opened!", "success")
+    else
+        showNotification("Failed to load emotes!", "error")
+        warn("Emote catalog error:", error)
+    end
+end
+
 -- CHAT BYPASS
 local function toggleChatBypass()
     commandStates.chatBypass = not commandStates.chatBypass
@@ -2016,6 +2035,8 @@ local function executeCommand(commandText)
                 showNotification("Invalid speed!", "error")
             end
         end
+    elseif command == "emotecatalog" or command == "emc" then
+        openEmoteCatalog()
     
     -- CHAT & PROTECTION
     elseif command == "cb" or command == "chatbypass" then
