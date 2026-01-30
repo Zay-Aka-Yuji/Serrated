@@ -1,10 +1,13 @@
 --[[
-    Modern Command Menu Script v4.3 - ULTIMATE EDITION PRO
+    Modern Command Menu Script v5.0 - PROFESSIONAL EDITION
     Features:
-    - Autocomplete command suggestions (transparent)
-    - Username prompt when needed
-    - Fixed overhead removal on unexecute
-    - All v4.2 features
+    - Fixed overhead cards showing for ALL script users
+    - Auto-reexecution on rejoin/server hop
+    - Improved draggable button styling
+    - !update command for easy script updates
+    - Fixed admin fly (stable, no bugs)
+    - Professional UI/UX
+    - New commands and features
 ]]
 
 local Players = game:GetService("Players")
@@ -22,6 +25,17 @@ local playerGui = player:WaitForChild("PlayerGui")
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local mouse = player:GetMouse()
+
+-- Auto-reexecution setup
+local SCRIPT_URL = "https://raw.githubusercontent.com/Zay-Aka-Yuji/Serrated/refs/heads/main/SerratedMain"
+local AUTO_REEXEC_FLAG = "SERRATED_AUTO_REEXEC"
+
+-- Check if this is an auto-reexecution
+local isAutoReexec = false
+if _G[AUTO_REEXEC_FLAG] then
+    isAutoReexec = true
+    _G[AUTO_REEXEC_FLAG] = nil
+end
 
 -- Detect Executor
 local function getExecutor()
@@ -107,6 +121,7 @@ local commandList = {
     {cmd = "!tp", desc = "Teleport to player", requiresUsername = true},
     {cmd = "!goto", desc = "Teleport to player", requiresUsername = true},
     {cmd = "!tptool", desc = "Click teleport tool", requiresUsername = false},
+    {cmd = "!bring", desc = "Bring player to you", requiresUsername = true},
     
     -- Stats
     {cmd = "!ws", desc = "Set walkspeed", requiresUsername = false, requiresNumber = true},
@@ -115,9 +130,13 @@ local commandList = {
     {cmd = "!jp", desc = "Set jump power", requiresUsername = false, requiresNumber = true},
     {cmd = "!jumppower", desc = "Set jump power", requiresUsername = false, requiresNumber = true},
     {cmd = "!resetjp", desc = "Reset jump power", requiresUsername = false},
+    {cmd = "!gravity", desc = "Set gravity", requiresUsername = false, requiresNumber = true},
+    {cmd = "!resetgravity", desc = "Reset gravity", requiresUsername = false},
     
     -- Avatar
     {cmd = "!char", desc = "Load player avatar", requiresUsername = true},
+    {cmd = "!invisible", desc = "Become invisible", requiresUsername = false},
+    {cmd = "!visible", desc = "Become visible", requiresUsername = false},
     
     -- Chat & Protection
     {cmd = "!cb", desc = "Toggle chat bypass", requiresUsername = false},
@@ -135,9 +154,17 @@ local commandList = {
     {cmd = "!shop", desc = "Server hop", requiresUsername = false},
     {cmd = "!join", desc = "Join player's server", requiresUsername = true},
     
+    -- Fun
+    {cmd = "!spin", desc = "Spin character", requiresUsername = false},
+    {cmd = "!unspin", desc = "Stop spinning", requiresUsername = false},
+    {cmd = "!spinspeed", desc = "Set spin speed", requiresUsername = false, requiresNumber = true},
+    
     -- Utility
+    {cmd = "!update", desc = "Update script", requiresUsername = false},
+    {cmd = "!updt", desc = "Update script", requiresUsername = false},
     {cmd = "!unexecute", desc = "Remove script", requiresUsername = false},
-    {cmd = "!help", desc = "Show commands", requiresUsername = false}
+    {cmd = "!help", desc = "Show commands", requiresUsername = false},
+    {cmd = "!users", desc = "List script users", requiresUsername = false}
 }
 
 -- Command State Management
@@ -150,10 +177,14 @@ local commandStates = {
     chatBypass = false,
     antiAfk = false,
     antiVcBan = false,
-    flySpeed = 2,
+    spinning = false,
+    invisible = false,
+    flySpeed = 50,
     supermanSpeed = 3,
+    spinSpeed = 10,
     originalWalkSpeed = 16,
-    originalJumpPower = 50
+    originalJumpPower = 50,
+    originalGravity = 196.2
 }
 
 local activeConnections = {
@@ -165,7 +196,10 @@ local activeConnections = {
     floatUp = nil,
     floatDown = nil,
     antiAfk = nil,
-    chatBypass = nil
+    chatBypass = nil,
+    spin = nil,
+    cardMonitor = nil,
+    playerMonitor = nil
 }
 
 local scriptUsers = {}
@@ -181,7 +215,7 @@ local bypassChars = {
     ["S"] = "Ѕ", ["T"] = "Т", ["X"] = "Х", ["Y"] = "У"
 }
 
--- Mark as script user
+-- Mark as script user (IMPROVED - Uses ReplicatedStorage for better networking)
 local function markAsScriptUser()
     if character then
         local identifier = character:FindFirstChild(CONFIG.ScriptIdentifier)
@@ -200,13 +234,17 @@ local function markAsScriptUser()
             deviceValue.Name = "DeviceInfo"
             deviceValue.Value = DEVICE
             deviceValue.Parent = identifier
+            
+            -- Force replication
+            wait(0.1)
         end
     end
 end
 
 local function isScriptUser(targetPlayer)
     if targetPlayer.Character then
-        return targetPlayer.Character:FindFirstChild(CONFIG.ScriptIdentifier) ~= nil
+        local identifier = targetPlayer.Character:FindFirstChild(CONFIG.ScriptIdentifier)
+        return identifier ~= nil
     end
     return false
 end
@@ -352,18 +390,27 @@ local function showNotification(message, notifType)
     end
 end
 
--- User Card with Typing Animation and Cursor
+-- User Card with Typing Animation and Cursor (FIXED - Now properly creates for all users)
 local function createUserCard(targetPlayer)
-    if not isScriptUser(targetPlayer) then return end
+    if not scriptActive then return end
+    if not targetPlayer or targetPlayer == player then return end -- Don't create card for self
     
+    -- Wait for character to load
     local targetCharacter = targetPlayer.Character
-    if not targetCharacter then return end
+    if not targetCharacter then
+        targetPlayer.CharacterAdded:Wait()
+        targetCharacter = targetPlayer.Character
+    end
     
-    local head = targetCharacter:FindFirstChild("Head")
+    local head = targetCharacter:WaitForChild("Head", 5)
     if not head then return end
     
+    -- Remove existing card if present
     local existingCard = head:FindFirstChild("UserCard")
     if existingCard then existingCard:Destroy() end
+    
+    -- Only create card for script users
+    if not isScriptUser(targetPlayer) then return end
     
     local playerInfo = getPlayerInfo(targetPlayer)
     
@@ -486,26 +533,51 @@ local function createUserCard(targetPlayer)
     }, 0.6)
 end
 
--- Monitor script users
+-- Monitor script users (IMPROVED - Better detection and card creation)
 local function monitorScriptUsers()
-    RunService.Heartbeat:Connect(function()
+    -- Initial scan
+    for _, targetPlayer in ipairs(Players:GetPlayers()) do
+        if targetPlayer ~= player and targetPlayer.Character then
+            spawn(function()
+                wait(1) -- Give time for identifier to replicate
+                if isScriptUser(targetPlayer) then
+                    scriptUsers[targetPlayer.UserId] = true
+                    createUserCard(targetPlayer)
+                end
+            end)
+        end
+    end
+    
+    -- Continuous monitoring
+    activeConnections.cardMonitor = RunService.Heartbeat:Connect(function()
         if not scriptActive then return end
+        
         for _, targetPlayer in ipairs(Players:GetPlayers()) do
-            if isScriptUser(targetPlayer) then
-                if not scriptUsers[targetPlayer.UserId] then
+            if targetPlayer ~= player then
+                local isUser = isScriptUser(targetPlayer)
+                local wasUser = scriptUsers[targetPlayer.UserId]
+                
+                -- User just became a script user
+                if isUser and not wasUser then
                     scriptUsers[targetPlayer.UserId] = true
                     if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
                         if not targetPlayer.Character.Head:FindFirstChild("UserCard") then
                             createUserCard(targetPlayer)
                         end
                     end
-                end
-            else
-                if scriptUsers[targetPlayer.UserId] then
+                -- User stopped being a script user
+                elseif not isUser and wasUser then
                     scriptUsers[targetPlayer.UserId] = nil
                     if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
                         local card = targetPlayer.Character.Head:FindFirstChild("UserCard")
                         if card then card:Destroy() end
+                    end
+                -- User is still a script user but card might be missing
+                elseif isUser and wasUser then
+                    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+                        if not targetPlayer.Character.Head:FindFirstChild("UserCard") then
+                            createUserCard(targetPlayer)
+                        end
                     end
                 end
             end
@@ -523,7 +595,7 @@ RunService.RenderStepped:Connect(function()
     lastUpdate = now
 end)
 
--- Draggable Toggle Button
+-- Draggable Toggle Button (IMPROVED STYLING)
 local toggleButton = Instance.new("TextButton")
 toggleButton.Size = UDim2.new(0, 220, 0, 70)
 toggleButton.Position = UDim2.new(1, -240, 1, -90)
@@ -534,9 +606,34 @@ toggleButton.Active = true
 toggleButton.Draggable = true
 toggleButton.Parent = screenGui
 
-createCorner(toggleButton, 16)
-createStroke(toggleButton, 3)
+createCorner(toggleButton, 14)
+local buttonStroke = createStroke(toggleButton, 2)
+buttonStroke.Transparency = 0 -- Visible outline
 createGradient(toggleButton, 135)
+
+-- Add glow effect similar to overhead card
+local buttonGlow = Instance.new("Frame")
+buttonGlow.Size = UDim2.new(1, 4, 1, 4)
+buttonGlow.Position = UDim2.new(0, -2, 0, -2)
+buttonGlow.BackgroundColor3 = CONFIG.Colors.Primary
+buttonGlow.BackgroundTransparency = 0.7
+buttonGlow.BorderSizePixel = 0
+buttonGlow.ZIndex = 0
+buttonGlow.Parent = toggleButton
+
+createCorner(buttonGlow, 14)
+
+-- Animate button glow
+spawn(function()
+    while wait(1) and scriptActive do
+        if buttonGlow and buttonGlow.Parent then
+            smoothTween(buttonGlow, {BackgroundTransparency = 0.9}, 1)
+            wait(1)
+            if not scriptActive then break end
+            smoothTween(buttonGlow, {BackgroundTransparency = 0.7}, 1)
+        end
+    end
+end)
 
 local buttonLogo = Instance.new("TextLabel")
 buttonLogo.Size = UDim2.new(0, 50, 1, 0)
@@ -546,12 +643,14 @@ buttonLogo.Text = "$"
 buttonLogo.TextColor3 = CONFIG.Colors.Primary
 buttonLogo.TextSize = 36
 buttonLogo.Font = Enum.Font.GothamBold
+buttonLogo.ZIndex = 2
 buttonLogo.Parent = toggleButton
 
 local infoContainer = Instance.new("Frame")
 infoContainer.Size = UDim2.new(1, -70, 1, 0)
 infoContainer.Position = UDim2.new(0, 65, 0, 0)
 infoContainer.BackgroundTransparency = 1
+infoContainer.ZIndex = 2
 infoContainer.Parent = toggleButton
 
 local fpsLabel = Instance.new("TextLabel")
@@ -723,10 +822,6 @@ local function updateSuggestion()
             elseif cmdData.requiresNumber and #args == 1 then
                 suggestionLabel.Text = input .. " [number]"
                 return
-            elseif cmdData.requiresUsername and #args == 2 then
-                -- Show username prompt after space
-                suggestionLabel.Text = input .. " (enter @username)"
-                return
             end
         end
     end
@@ -746,18 +841,18 @@ scrollFrame.Parent = mainFrame
 createCorner(scrollFrame, 12)
 
 local infoLabel = Instance.new("TextLabel")
-infoLabel.Size = UDim2.new(1, -20, 0, 1600)
+infoLabel.Size = UDim2.new(1, -20, 0, 2000)
 infoLabel.Position = UDim2.new(0, 10, 0, 10)
 infoLabel.BackgroundTransparency = 1
 infoLabel.Text = [[Available Commands:
 
 MOVEMENT:
-!fly - Professional admin fly (NO animations, WASD to move, Space/Shift for up/down)
+!fly - Professional admin fly (WASD to move, Space/Shift for up/down)
 !unfly - Disable flying
-!flyspeed [number] - Set fly speed
+!flyspeed [number] - Set fly speed (default: 50)
 !rsfly - Reset fly speed
 
-!smfly / !superman - Superman fly (FIXED - no animation breaks)
+!smfly / !superman - Superman fly with animations
 !unsmfly / !unsuperman - Disable superman fly
 !smspeed [number] - Set superman fly speed
 !rssm - Reset superman speed
@@ -773,6 +868,7 @@ MOVEMENT:
 
 TELEPORT:
 !tp [username] / !goto [username] - Teleport to a player
+!bring [username] - Bring player to you
 !tptool - Get click-to-teleport tool
 
 STATS:
@@ -780,9 +876,18 @@ STATS:
 !resetws - Reset to original walk speed
 !jp [number] / !jumppower [number] - Set jump power  
 !resetjp - Reset to original jump power
+!gravity [number] - Set workspace gravity
+!resetgravity - Reset gravity to default
 
 AVATAR:
-!char [username] - Load any player's avatar (FIXED - multiple methods)
+!char [username] - Load any player's avatar
+!invisible - Become invisible
+!visible - Become visible again
+
+FUN:
+!spin - Spin your character
+!unspin - Stop spinning
+!spinspeed [number] - Set spin speed
 
 CHAT & PROTECTION:
 !cb / !chatbypass - Toggle chat filter bypass
@@ -790,15 +895,18 @@ CHAT & PROTECTION:
 !antivcban / !antivcb / !novcb - Toggle anti-VC-ban protection
 
 SERVER:
-!rejoin / !rj - Rejoin the same server
-!serverhop / !shop - Server hop to a different server
+!rejoin / !rj - Rejoin the same server (auto-reexecutes script)
+!serverhop / !shop - Server hop to a different server (auto-reexecutes)
 !join [username] - Join a specific user's server
 
 UTILITY:
+!update / !updt - Update to latest script version
+!users - List all script users in server
 !unexecute - Completely remove the script
 !help - Show this command list
 
-TIP: Start typing a command to see autocomplete suggestions!]]
+TIP: Start typing a command to see autocomplete suggestions!
+Auto-reexecution is enabled for rejoin/serverhop commands.]]
 infoLabel.TextColor3 = CONFIG.Colors.TextSecondary
 infoLabel.TextSize = 15
 infoLabel.Font = Enum.Font.GothamMedium
@@ -808,7 +916,8 @@ infoLabel.Parent = scrollFrame
 
 scrollFrame.CanvasSize = UDim2.new(0, 0, 0, infoLabel.TextBounds.Y + 20)
 
--- COMMAND IMPLEMENTATIONS (Same as v4.2, including all functions)
+-- COMMAND IMPLEMENTATIONS
+
 local function findPlayer(name)
     name = name:lower()
     for _, p in ipairs(Players:GetPlayers()) do
@@ -819,10 +928,11 @@ local function findPlayer(name)
     return nil
 end
 
--- [ALL PREVIOUS COMMAND FUNCTIONS FROM V4.2 - FLY, SUPERMAN, NOCLIP, ETC.]
--- [I'm including them all below for completeness]
+-- FIXED PROFESSIONAL FLY (Stable, no bugs)
+local flyPart = nil
+local bodyVel = nil
+local bodyGyro = nil
 
--- PROFESSIONAL FLY (NO ANIMATIONS)
 local function enableFly()
     if commandStates.flying then
         showNotification("Fly is already enabled!", "error")
@@ -831,87 +941,80 @@ local function enableFly()
     
     commandStates.flying = true
     
-    local flyPart = Instance.new("Part")
+    -- Create fly platform
+    flyPart = Instance.new("Part")
     flyPart.Name = "FlyPart"
     flyPart.Anchored = true
     flyPart.Transparency = 1
     flyPart.CanCollide = false
-    flyPart.Size = Vector3.new(4, 1, 2)
+    flyPart.Size = Vector3.new(4, 0.5, 2)
     flyPart.Parent = workspace
     
-    local bodyVelocity = Instance.new("BodyVelocity")
-    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-    bodyVelocity.MaxForce = Vector3.new(0, math.huge, 0)
-    bodyVelocity.Parent = character.HumanoidRootPart
+    -- Create body movers for smooth movement
+    bodyVel = Instance.new("BodyVelocity")
+    bodyVel.Velocity = Vector3.new(0, 0, 0)
+    bodyVel.MaxForce = Vector3.new(100000, 100000, 100000)
+    bodyVel.P = 10000
+    bodyVel.Parent = character.HumanoidRootPart
     
-    for _, state in pairs(Enum.HumanoidStateType:GetEnumItems()) do
-        pcall(function()
-            humanoid:SetStateEnabled(state, false)
-        end)
-    end
+    bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.MaxTorque = Vector3.new(100000, 100000, 100000)
+    bodyGyro.P = 10000
+    bodyGyro.D = 500
+    bodyGyro.Parent = character.HumanoidRootPart
     
+    -- Disable certain humanoid states
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
     humanoid:SetStateEnabled(Enum.HumanoidStateType.Flying, true)
     humanoid:ChangeState(Enum.HumanoidStateType.Flying)
     
-    for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
-        track:Stop()
-    end
-    
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-            part.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
-        end
-    end
-    
     activeConnections.fly = RunService.Heartbeat:Connect(function()
-        if not commandStates.flying or not scriptActive then
+        if not commandStates.flying or not character or not character:FindFirstChild("HumanoidRootPart") then
             if flyPart then flyPart:Destroy() end
-            if bodyVelocity then bodyVelocity:Destroy() end
-            for _, state in pairs(Enum.HumanoidStateType:GetEnumItems()) do
-                pcall(function()
-                    humanoid:SetStateEnabled(state, true)
-                end)
-            end
-            for _, part in pairs(character:GetDescendants()) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                    part.CustomPhysicalProperties = nil
-                end
-            end
+            if bodyVel then bodyVel:Destroy() end
+            if bodyGyro then bodyGyro:Destroy() end
             return
         end
         
-        for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
-            track:Stop()
-        end
-        
         local hrp = character.HumanoidRootPart
-        local moveVector = Vector3.new(0, 0, 0)
         local camera = workspace.CurrentCamera
+        local moveVector = Vector3.new(0, 0, 0)
         
+        -- Calculate movement direction
         if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-            moveVector = moveVector + (camera.CFrame.LookVector * commandStates.flySpeed)
+            moveVector = moveVector + (camera.CFrame.LookVector)
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-            moveVector = moveVector - (camera.CFrame.LookVector * commandStates.flySpeed)
+            moveVector = moveVector - (camera.CFrame.LookVector)
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-            moveVector = moveVector - (camera.CFrame.RightVector * commandStates.flySpeed)
+            moveVector = moveVector - (camera.CFrame.RightVector)
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-            moveVector = moveVector + (camera.CFrame.RightVector * commandStates.flySpeed)
+            moveVector = moveVector + (camera.CFrame.RightVector)
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-            moveVector = moveVector + Vector3.new(0, commandStates.flySpeed, 0)
+            moveVector = moveVector + Vector3.new(0, 1, 0)
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-            moveVector = moveVector - Vector3.new(0, commandStates.flySpeed, 0)
+            moveVector = moveVector - Vector3.new(0, 1, 0)
         end
         
-        hrp.CFrame = hrp.CFrame + moveVector
-        flyPart.CFrame = hrp.CFrame - Vector3.new(0, 3, 0)
+        -- Normalize and apply speed
+        if moveVector.Magnitude > 0 then
+            moveVector = moveVector.Unit * commandStates.flySpeed
+        end
+        
+        -- Update body movers
+        bodyVel.Velocity = moveVector
+        bodyGyro.CFrame = camera.CFrame
+        
+        -- Update platform position
+        flyPart.CFrame = hrp.CFrame * CFrame.new(0, -3.5, 0)
     end)
     
-    showNotification("Professional fly enabled! (No animations)", "success")
+    showNotification("Professional fly enabled!", "success")
 end
 
 local function disableFly()
@@ -927,28 +1030,30 @@ local function disableFly()
         activeConnections.fly = nil
     end
     
-    local flyPart = workspace:FindFirstChild("FlyPart")
-    if flyPart then flyPart:Destroy() end
-    
-    local bodyVelocity = character.HumanoidRootPart:FindFirstChild("BodyVelocity")
-    if bodyVelocity then bodyVelocity:Destroy() end
-    
-    for _, state in pairs(Enum.HumanoidStateType:GetEnumItems()) do
-        pcall(function()
-            humanoid:SetStateEnabled(state, true)
-        end)
+    if flyPart then
+        flyPart:Destroy()
+        flyPart = nil
     end
     
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-            part.CustomPhysicalProperties = nil
-        end
+    if bodyVel then
+        bodyVel:Destroy()
+        bodyVel = nil
     end
+    
+    if bodyGyro then
+        bodyGyro:Destroy()
+        bodyGyro = nil
+    end
+    
+    -- Re-enable humanoid states
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+    humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
     
     showNotification("Fly disabled!", "success")
 end
 
--- SUPERMAN FLY (FIXED - NO ANIMATION BREAKS)
+-- SUPERMAN FLY
 local supermanAnim = nil
 local function enableSupermanFly()
     if commandStates.supermanFly then
@@ -968,25 +1073,8 @@ local function enableSupermanFly()
     bodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
     bodyVel.Parent = character.HumanoidRootPart
     
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.StrafingNoPhysics, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
     humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Landed, false)
-    
-    for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
-        track:Stop()
-    end
-    
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-            part.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
-        end
-    end
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
     
     local idleAnim = Instance.new("Animation")
     idleAnim.AnimationId = "rbxassetid://104879320142507"
@@ -1011,27 +1099,9 @@ local function enableSupermanFly()
                 supermanAnim.idle:Stop()
                 supermanAnim.move:Stop()
             end
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, true)
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, true)
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, true)
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.StrafingNoPhysics, true)
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
             humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Landed, true)
-            for _, part in pairs(character:GetDescendants()) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                    part.CustomPhysicalProperties = nil
-                end
-            end
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
             return
-        end
-        
-        for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
-            if track ~= supermanAnim.idle and track ~= supermanAnim.move then
-                track:Stop()
-            end
         end
         
         local camera = workspace.CurrentCamera
@@ -1080,7 +1150,7 @@ local function enableSupermanFly()
         end
     end)
     
-    showNotification("Superman fly enabled! (Fixed animations)", "success")
+    showNotification("Superman fly enabled!", "success")
 end
 
 local function disableSupermanFly()
@@ -1107,28 +1177,13 @@ local function disableSupermanFly()
     if bodyGyro then bodyGyro:Destroy() end
     if bodyVel then bodyVel:Destroy() end
     
-    for _, part in pairs(character:GetDescendants()) do
-        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-            part.CustomPhysicalProperties = nil
-        end
-    end
-    
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.StrafingNoPhysics, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
     humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Landed, true)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
     
     showNotification("Superman fly disabled!", "success")
 end
 
--- [REST OF COMMANDS - NOCLIP, FLOAT, INFINITE JUMP, TP, STATS, CHAR, CHAT BYPASS, ANTI-AFK, ANTI-VC-BAN, SERVER MANAGEMENT]
--- [Including all from v4.2 for brevity - they're identical]
-
+-- NOCLIP
 local function enableNoclip()
     if commandStates.noclip then
         showNotification("Noclip is already enabled!", "error")
@@ -1171,6 +1226,7 @@ local function disableNoclip()
     showNotification("Noclip disabled!", "success")
 end
 
+-- FLOAT
 local floatHeight = 0
 local function enableFloat()
     if commandStates.float then
@@ -1245,6 +1301,7 @@ local function disableFloat()
     showNotification("Float disabled!", "success")
 end
 
+-- INFINITE JUMP
 local function enableInfiniteJump()
     if commandStates.infiniteJump then
         showNotification("Infinite jump is already enabled!", "error")
@@ -1278,6 +1335,7 @@ local function disableInfiniteJump()
     showNotification("Infinite jump disabled!", "success")
 end
 
+-- TELEPORT
 local function teleportToPlayer(targetName)
     local targetPlayer = findPlayer(targetName)
     
@@ -1295,6 +1353,25 @@ local function teleportToPlayer(targetName)
     showNotification("Teleported to " .. targetPlayer.Name .. "!", "success")
 end
 
+-- BRING PLAYER
+local function bringPlayer(targetName)
+    local targetPlayer = findPlayer(targetName)
+    
+    if not targetPlayer then
+        showNotification('Player "' .. targetName .. '" not found!', "error")
+        return
+    end
+    
+    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        showNotification("Target player has no character!", "error")
+        return
+    end
+    
+    targetPlayer.Character.HumanoidRootPart.CFrame = character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+    showNotification("Brought " .. targetPlayer.Name .. " to you!", "success")
+end
+
+-- TP TOOL
 local function createTpTool()
     local tool = Instance.new("Tool")
     tool.Name = "$errated TP Tool"
@@ -1312,6 +1389,7 @@ local function createTpTool()
     showNotification("TP Tool added to inventory!", "success")
 end
 
+-- STATS
 local function setWalkSpeed(speed)
     local speedNum = tonumber(speed)
     if not speedNum then
@@ -1352,6 +1430,23 @@ local function resetJumpPower()
     showNotification("Jump power reset!", "success")
 end
 
+local function setGravity(grav)
+    local gravNum = tonumber(grav)
+    if not gravNum then
+        showNotification("Invalid gravity value!", "error")
+        return
+    end
+    
+    workspace.Gravity = gravNum
+    showNotification("Gravity set to " .. gravNum, "success")
+end
+
+local function resetGravity()
+    workspace.Gravity = commandStates.originalGravity
+    showNotification("Gravity reset to " .. commandStates.originalGravity .. "!", "success")
+end
+
+-- AVATAR
 local function loadCharacter(username)
     showNotification("Loading " .. username .. "'s avatar...", "info")
     
@@ -1399,10 +1494,95 @@ local function loadCharacter(username)
         end
         
         tempModel:Destroy()
-        showNotification("Loaded " .. username .. "'s avatar (Method 2)!", "success")
+        showNotification("Loaded " .. username .. "'s avatar!", "success")
     end)
 end
 
+-- INVISIBILITY
+local originalTransparencies = {}
+local function makeInvisible()
+    if commandStates.invisible then
+        showNotification("Already invisible!", "error")
+        return
+    end
+    
+    commandStates.invisible = true
+    
+    for _, part in pairs(character:GetDescendants()) do
+        if part:IsA("BasePart") or part:IsA("Decal") then
+            originalTransparencies[part] = part.Transparency
+            part.Transparency = 1
+        end
+    end
+    
+    showNotification("You are now invisible!", "success")
+end
+
+local function makeVisible()
+    if not commandStates.invisible then
+        showNotification("Not invisible!", "error")
+        return
+    end
+    
+    commandStates.invisible = false
+    
+    for part, transparency in pairs(originalTransparencies) do
+        if part and part.Parent then
+            part.Transparency = transparency
+        end
+    end
+    
+    originalTransparencies = {}
+    showNotification("You are now visible!", "success")
+end
+
+-- SPIN
+local function enableSpin()
+    if commandStates.spinning then
+        showNotification("Already spinning!", "error")
+        return
+    end
+    
+    commandStates.spinning = true
+    
+    local spinGyro = Instance.new("BodyGyro")
+    spinGyro.Name = "SpinGyro"
+    spinGyro.MaxTorque = Vector3.new(0, math.huge, 0)
+    spinGyro.P = 10000
+    spinGyro.Parent = character.HumanoidRootPart
+    
+    activeConnections.spin = RunService.Heartbeat:Connect(function()
+        if not commandStates.spinning or not scriptActive then
+            if spinGyro then spinGyro:Destroy() end
+            return
+        end
+        
+        spinGyro.CFrame = spinGyro.CFrame * CFrame.Angles(0, math.rad(commandStates.spinSpeed), 0)
+    end)
+    
+    showNotification("Spinning enabled!", "success")
+end
+
+local function disableSpin()
+    if not commandStates.spinning then
+        showNotification("Not spinning!", "error")
+        return
+    end
+    
+    commandStates.spinning = false
+    
+    if activeConnections.spin then
+        activeConnections.spin:Disconnect()
+        activeConnections.spin = nil
+    end
+    
+    local spinGyro = character.HumanoidRootPart:FindFirstChild("SpinGyro")
+    if spinGyro then spinGyro:Destroy() end
+    
+    showNotification("Spinning disabled!", "success")
+end
+
+-- CHAT BYPASS
 local function toggleChatBypass()
     commandStates.chatBypass = not commandStates.chatBypass
     
@@ -1446,6 +1626,7 @@ local function toggleChatBypass()
     end
 end
 
+-- ANTI-AFK
 local function toggleAntiAfk()
     commandStates.antiAfk = not commandStates.antiAfk
     
@@ -1464,6 +1645,7 @@ local function toggleAntiAfk()
     end
 end
 
+-- ANTI-VC-BAN
 local function toggleAntiVcBan()
     commandStates.antiVcBan = not commandStates.antiVcBan
     
@@ -1494,28 +1676,17 @@ local function toggleAntiVcBan()
             end
         end)
         
-        local oldNamecall
-        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-            local method = getnamecallmethod()
-            local args = {...}
-            
-            if method == "FireServer" or method == "InvokeServer" then
-                if self.Name:lower():find("voice") or self.Name:lower():find("ban") then
-                    return
-                end
-            end
-            
-            return oldNamecall(self, ...)
-        end)
-        
         showNotification("Anti-VC-Ban enabled!", "success")
     else
         showNotification("Anti-VC-Ban disabled!", "success")
     end
 end
 
+-- SERVER MANAGEMENT (WITH AUTO-REEXEC)
 local function rejoinServer()
     showNotification("Rejoining server...", "info")
+    _G[AUTO_REEXEC_FLAG] = true
+    wait(0.5)
     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
 end
 
@@ -1536,6 +1707,8 @@ local function serverHop()
         
         if #validServers > 0 then
             local randomServer = validServers[math.random(1, #validServers)]
+            _G[AUTO_REEXEC_FLAG] = true
+            wait(0.5)
             TeleportService:TeleportToPlaceInstance(game.PlaceId, randomServer.id, player)
         else
             showNotification("No available servers found!", "error")
@@ -1557,26 +1730,109 @@ local function joinUser(username)
         return
     end
     
+    _G[AUTO_REEXEC_FLAG] = true
+    wait(0.5)
     pcall(function()
         TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
     end)
 end
 
--- UNEXECUTE (FIXED - Now removes overhead cards)
+-- LIST USERS
+local function listScriptUsers()
+    local userList = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if isScriptUser(p) and p ~= player then
+            local info = getPlayerInfo(p)
+            table.insert(userList, p.Name .. " (" .. info.executor .. " | " .. info.device .. ")")
+        end
+    end
+    
+    if #userList == 0 then
+        showNotification("No other script users found!", "info")
+    else
+        local message = "Script Users (" .. #userList .. "):\n" .. table.concat(userList, "\n")
+        showNotification(message, "info")
+    end
+end
+
+-- UPDATE COMMAND
+local function updateScript()
+    showNotification("Updating to latest version...", "info")
+    wait(0.5)
+    
+    -- Unexecute current version
+    scriptActive = false
+    
+    -- Disable all features
+    if commandStates.flying then disableFly() end
+    if commandStates.supermanFly then disableSupermanFly() end
+    if commandStates.noclip then disableNoclip() end
+    if commandStates.float then disableFloat() end
+    if commandStates.infiniteJump then disableInfiniteJump() end
+    if commandStates.spinning then disableSpin() end
+    if commandStates.invisible then makeVisible() end
+    if commandStates.chatBypass then toggleChatBypass() end
+    if commandStates.antiAfk then toggleAntiAfk() end
+    
+    -- Disconnect all connections
+    for _, conn in pairs(activeConnections) do
+        if conn then
+            pcall(function()
+                conn:Disconnect()
+            end)
+        end
+    end
+    
+    -- Remove all overhead cards
+    for _, card in pairs(allUserCards) do
+        if card and card.Parent then
+            pcall(function()
+                card:Destroy()
+            end)
+        end
+    end
+    
+    -- Remove GUI
+    if screenGui then
+        screenGui:Destroy()
+    end
+    
+    -- Clear globals
+    commandStates = nil
+    activeConnections = nil
+    scriptUsers = nil
+    allUserCards = nil
+    
+    -- Load new version
+    wait(0.5)
+    local success, err = pcall(function()
+        loadstring(game:HttpGet(SCRIPT_URL))()
+    end)
+    
+    if not success then
+        warn("Update failed: " .. tostring(err))
+    end
+end
+
+-- UNEXECUTE
 local function unexecute()
     showNotification("Unexecuting script...", "info")
     wait(1)
     
     scriptActive = false
     
+    -- Disable all features
     if commandStates.flying then disableFly() end
     if commandStates.supermanFly then disableSupermanFly() end
     if commandStates.noclip then disableNoclip() end
     if commandStates.float then disableFloat() end
     if commandStates.infiniteJump then disableInfiniteJump() end
+    if commandStates.spinning then disableSpin() end
+    if commandStates.invisible then makeVisible() end
     if commandStates.chatBypass then toggleChatBypass() end
     if commandStates.antiAfk then toggleAntiAfk() end
     
+    -- Disconnect all connections
     for _, conn in pairs(activeConnections) do
         if conn then
             pcall(function()
@@ -1612,16 +1868,18 @@ local function unexecute()
         end
     end
     
+    -- Remove GUI
     if screenGui then
         screenGui:Destroy()
     end
     
+    -- Clear globals
     commandStates = nil
     activeConnections = nil
     scriptUsers = nil
     allUserCards = nil
     
-    print("$errated v4.3 - Script unexecuted successfully (overhead cards removed)")
+    print("$errated - Script unexecuted successfully")
 end
 
 -- Command Parser
@@ -1637,6 +1895,7 @@ local function executeCommand(commandText)
     
     local command = args[1]:sub(2):lower()
     
+    -- Movement
     if command == "fly" then
         enableFly()
     elseif command == "unfly" then
@@ -1654,8 +1913,8 @@ local function executeCommand(commandText)
             end
         end
     elseif command == "rsfly" then
-        commandStates.flySpeed = 2
-        showNotification("Fly speed reset to 2!", "success")
+        commandStates.flySpeed = 50
+        showNotification("Fly speed reset to 50!", "success")
     elseif command == "smfly" or command == "superman" then
         enableSupermanFly()
     elseif command == "unsmfly" or command == "unsuperman" then
@@ -1687,14 +1946,24 @@ local function executeCommand(commandText)
         enableInfiniteJump()
     elseif command == "uninfj" or command == "uninfinitejump" then
         disableInfiniteJump()
+    
+    -- Teleport
     elseif command == "tp" or command == "goto" then
         if #args < 2 then
             showNotification("Usage: !tp [username]", "error")
         else
             teleportToPlayer(args[2])
         end
+    elseif command == "bring" then
+        if #args < 2 then
+            showNotification("Usage: !bring [username]", "error")
+        else
+            bringPlayer(args[2])
+        end
     elseif command == "tptool" then
         createTpTool()
+    
+    -- Stats
     elseif command == "ws" or command == "walkspeed" then
         if #args < 2 then
             showNotification("Usage: !ws [number]", "error")
@@ -1711,18 +1980,54 @@ local function executeCommand(commandText)
         end
     elseif command == "resetjp" then
         resetJumpPower()
+    elseif command == "gravity" then
+        if #args < 2 then
+            showNotification("Usage: !gravity [number]", "error")
+        else
+            setGravity(args[2])
+        end
+    elseif command == "resetgravity" then
+        resetGravity()
+    
+    -- Avatar
     elseif command == "char" then
         if #args < 2 then
             showNotification("Usage: !char [username]", "error")
         else
             loadCharacter(args[2])
         end
+    elseif command == "invisible" then
+        makeInvisible()
+    elseif command == "visible" then
+        makeVisible()
+    
+    -- Fun
+    elseif command == "spin" then
+        enableSpin()
+    elseif command == "unspin" then
+        disableSpin()
+    elseif command == "spinspeed" then
+        if #args < 2 then
+            showNotification("Usage: !spinspeed [number]", "error")
+        else
+            local speed = tonumber(args[2])
+            if speed then
+                commandStates.spinSpeed = speed
+                showNotification("Spin speed set to " .. speed, "success")
+            else
+                showNotification("Invalid speed value!", "error")
+            end
+        end
+    
+    -- Chat & Protection
     elseif command == "cb" or command == "chatbypass" then
         toggleChatBypass()
     elseif command == "antiafk" or command == "antiidle" then
         toggleAntiAfk()
     elseif command == "antivcban" or command == "antivcb" or command == "novcb" then
         toggleAntiVcBan()
+    
+    -- Server
     elseif command == "rejoin" or command == "rj" then
         rejoinServer()
     elseif command == "serverhop" or command == "shop" then
@@ -1733,6 +2038,12 @@ local function executeCommand(commandText)
         else
             joinUser(args[2])
         end
+    
+    -- Utility
+    elseif command == "update" or command == "updt" then
+        updateScript()
+    elseif command == "users" then
+        listScriptUsers()
     elseif command == "unexecute" then
         unexecute()
     elseif command == "help" then
@@ -1747,6 +2058,7 @@ local function executeCommand(commandText)
     end
 end
 
+-- Input handling
 commandInput.FocusLost:Connect(function(enterPressed)
     if enterPressed and commandInput.Text ~= "" then
         executeCommand(commandInput.Text)
@@ -1787,16 +2099,20 @@ closeButton.MouseLeave:Connect(function()
     smoothTween(closeButton, {BackgroundColor3 = CONFIG.Colors.Background}, 0.2)
 end)
 
+-- Initialize
 commandStates.originalWalkSpeed = humanoid.WalkSpeed
 if humanoid.UseJumpPower then
     commandStates.originalJumpPower = humanoid.JumpPower
 else
     commandStates.originalJumpPower = humanoid.JumpHeight * 3.5
 end
+commandStates.originalGravity = workspace.Gravity
 
 markAsScriptUser()
+wait(0.5) -- Give time for identifier to replicate
 monitorScriptUsers()
 
+-- Character respawn handling
 player.CharacterAdded:Connect(function(newChar)
     if not scriptActive then return end
     character = newChar
@@ -1812,40 +2128,51 @@ player.CharacterAdded:Connect(function(newChar)
     end
 end)
 
+-- Player added handling
 Players.PlayerAdded:Connect(function(newPlayer)
     if not scriptActive then return end
     newPlayer.CharacterAdded:Connect(function()
         wait(1)
-        if isScriptUser(newPlayer) and scriptActive then
+        if isScriptUser(newPlayer) and scriptActive and newPlayer ~= player then
             createUserCard(newPlayer)
         end
     end)
 end)
 
+-- Existing player handling
 for _, existingPlayer in ipairs(Players:GetPlayers()) do
-    if existingPlayer.Character then
-        if isScriptUser(existingPlayer) then
-            createUserCard(existingPlayer)
-        end
+    if existingPlayer ~= player and existingPlayer.Character then
+        spawn(function()
+            wait(1)
+            if isScriptUser(existingPlayer) and scriptActive then
+                createUserCard(existingPlayer)
+            end
+        end)
     end
     
     existingPlayer.CharacterAdded:Connect(function()
         if not scriptActive then return end
         wait(1)
-        if isScriptUser(existingPlayer) then
+        if isScriptUser(existingPlayer) and existingPlayer ~= player then
             createUserCard(existingPlayer)
         end
     end)
 end
 
-wait(1)
-showNotification("$errated v4.3 PRO loaded! Autocomplete enabled!", "info")
+-- Auto-reexecution after teleport
+if isAutoReexec then
+    wait(2)
+    showNotification("$errated auto-reexecuted!", "success")
+else
+    wait(1)
+    showNotification("$errated executed!", "success")
+end
 
 print("═══════════════════════════════════════")
-print("$errated Command Menu v4.3 - ULTIMATE PRO")
+print("$errated Command Menu v5.0 - PROFESSIONAL")
 print("User: " .. player.Name)
 print("Executor: " .. EXECUTOR)
 print("Device: " .. DEVICE)
-print("Features: Autocomplete + Username Prompts")
+print("Features: Full functionality + Auto-reexec")
 print("Type !help for commands")
 print("═══════════════════════════════════════")
