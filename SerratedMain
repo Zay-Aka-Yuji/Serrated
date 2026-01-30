@@ -215,35 +215,60 @@ local bypassChars = {
     ["S"] = "Ѕ", ["T"] = "Т", ["X"] = "Х", ["Y"] = "У"
 }
 
--- Mark as script user (FIXED - Uses Attributes for cross-client replication)
-local function markAsScriptUser()
-    if character then
-        -- Use Attributes instead of BoolValue - these replicate across clients!
-        character:SetAttribute(CONFIG.ScriptIdentifier, true)
-        character:SetAttribute("ExecutorInfo", EXECUTOR)
-        character:SetAttribute("DeviceInfo", DEVICE)
+-- Script User Detection System (COMPLETE REWRITE - Server-based replication)
+local scriptUsersShared = {}
+local BROADCAST_INTERVAL = 2 -- Broadcast every 2 seconds
+
+-- Create or get shared storage
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local scriptFolder = ReplicatedStorage:FindFirstChild("SerratedUsers") or Instance.new("Folder")
+scriptFolder.Name = "SerratedUsers"
+scriptFolder.Parent = ReplicatedStorage
+
+-- Broadcast that we're using the script
+local function broadcastPresence()
+    if not character then return end
+    
+    local userMarker = scriptFolder:FindFirstChild(player.UserId)
+    if not userMarker then
+        userMarker = Instance.new("StringValue")
+        userMarker.Name = tostring(player.UserId)
+        userMarker.Parent = scriptFolder
     end
+    
+    -- Store executor and device info in the value
+    userMarker.Value = EXECUTOR .. "|" .. DEVICE
 end
 
+-- Check if a player is using the script
 local function isScriptUser(targetPlayer)
-    if targetPlayer.Character then
-        local hasAttribute = targetPlayer.Character:GetAttribute(CONFIG.ScriptIdentifier)
-        return hasAttribute == true
-    end
-    return false
+    local marker = scriptFolder:FindFirstChild(tostring(targetPlayer.UserId))
+    return marker ~= nil
 end
 
+-- Get player info
 local function getPlayerInfo(targetPlayer)
-    if targetPlayer.Character then
-        local executor = targetPlayer.Character:GetAttribute("ExecutorInfo")
-        local device = targetPlayer.Character:GetAttribute("DeviceInfo")
+    local marker = scriptFolder:FindFirstChild(tostring(targetPlayer.UserId))
+    if marker and marker.Value and marker.Value ~= "" then
+        local parts = {}
+        for part in marker.Value:gmatch("[^|]+") do
+            table.insert(parts, part)
+        end
         return {
-            executor = executor or "Unknown",
-            device = device or "Unknown"
+            executor = parts[1] or "Unknown",
+            device = parts[2] or "Unknown"
         }
     end
     return {executor = "Unknown", device = "Unknown"}
 end
+
+-- Continuous broadcasting to maintain presence
+spawn(function()
+    while scriptActive do
+        broadcastPresence()
+        wait(BROADCAST_INTERVAL)
+    end
+end)
 
 -- UI Creation
 local screenGui = Instance.new("ScreenGui")
@@ -505,8 +530,54 @@ local function createUserCard(targetPlayer)
     }, 0.6)
 end
 
--- Monitor script users
+-- Monitor script users (REWRITTEN - Watches ReplicatedStorage)
 local function monitorScriptUsers()
+    -- Listen for new users joining
+    scriptFolder.ChildAdded:Connect(function(child)
+        if not scriptActive then return end
+        wait(0.1)
+        
+        local userId = tonumber(child.Name)
+        if userId then
+            local targetPlayer = Players:GetPlayerByUserId(userId)
+            if targetPlayer and targetPlayer.Character then
+                scriptUsers[userId] = true
+                createUserCard(targetPlayer)
+            end
+        end
+    end)
+    
+    -- Listen for users leaving
+    scriptFolder.ChildRemoved:Connect(function(child)
+        if not scriptActive then return end
+        
+        local userId = tonumber(child.Name)
+        if userId then
+            scriptUsers[userId] = nil
+            local targetPlayer = Players:GetPlayerByUserId(userId)
+            if targetPlayer and targetPlayer.Character then
+                local head = targetPlayer.Character:FindFirstChild("Head")
+                if head then
+                    local card = head:FindFirstChild("UserCard")
+                    if card then card:Destroy() end
+                end
+            end
+        end
+    end)
+    
+    -- Initial scan for existing script users
+    for _, marker in ipairs(scriptFolder:GetChildren()) do
+        local userId = tonumber(marker.Name)
+        if userId then
+            local targetPlayer = Players:GetPlayerByUserId(userId)
+            if targetPlayer and targetPlayer.Character then
+                scriptUsers[userId] = true
+                createUserCard(targetPlayer)
+            end
+        end
+    end
+    
+    -- Heartbeat to ensure cards stay created
     RunService.Heartbeat:Connect(function()
         if not scriptActive then return end
         for _, targetPlayer in ipairs(Players:GetPlayers()) do
@@ -1739,11 +1810,10 @@ local function updateScript()
         end
     end
     
-    -- Remove attributes from character
-    if character then
-        character:SetAttribute(CONFIG.ScriptIdentifier, nil)
-        character:SetAttribute("ExecutorInfo", nil)
-        character:SetAttribute("DeviceInfo", nil)
+    -- Remove our marker (will be recreated by new version)
+    local userMarker = scriptFolder:FindFirstChild(tostring(player.UserId))
+    if userMarker then
+        userMarker:Destroy()
     end
     
     -- Remove GUI
@@ -1804,22 +1874,10 @@ local function unexecute()
         end
     end
     
-    -- Remove identifier from all players
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr.Character then
-            -- Remove attributes
-            plr.Character:SetAttribute(CONFIG.ScriptIdentifier, nil)
-            plr.Character:SetAttribute("ExecutorInfo", nil)
-            plr.Character:SetAttribute("DeviceInfo", nil)
-            
-            local head = plr.Character:FindFirstChild("Head")
-            if head then
-                local userCard = head:FindFirstChild("UserCard")
-                if userCard then
-                    userCard:Destroy()
-                end
-            end
-        end
+    -- Remove our marker from ReplicatedStorage
+    local userMarker = scriptFolder:FindFirstChild(tostring(player.UserId))
+    if userMarker then
+        userMarker:Destroy()
     end
     
     -- Remove GUI
@@ -2062,7 +2120,7 @@ else
 end
 commandStates.originalGravity = workspace.Gravity
 
-markAsScriptUser()
+broadcastPresence() -- Initial broadcast
 monitorScriptUsers()
 
 -- Character respawn handling
@@ -2070,7 +2128,7 @@ player.CharacterAdded:Connect(function(newChar)
     if not scriptActive then return end
     character = newChar
     humanoid = character:WaitForChild("Humanoid")
-    markAsScriptUser()
+    broadcastPresence() -- Re-broadcast on respawn
     
     commandStates.originalWalkSpeed = humanoid.WalkSpeed
     if humanoid.UseJumpPower then
@@ -2090,6 +2148,14 @@ Players.PlayerAdded:Connect(function(newPlayer)
             createUserCard(newPlayer)
         end
     end)
+end)
+
+-- Player leaving handling (cleanup marker)
+Players.PlayerRemoving:Connect(function(leavingPlayer)
+    local marker = scriptFolder:FindFirstChild(tostring(leavingPlayer.UserId))
+    if marker then
+        marker:Destroy()
+    end
 end)
 
 -- Existing player handling
