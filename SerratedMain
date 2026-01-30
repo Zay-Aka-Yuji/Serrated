@@ -1,16 +1,18 @@
 --[[
-    Modern Command Menu Script v5.1 - FIXED OVERHEAD CARDS EDITION
+    Modern Command Menu Script v5.2 - ULTRA FIXED EDITION
     
-    ✓ FIXED: Overhead cards now show for ALL script users (Player Attributes)
+    ✓ FIXED: Overhead cards now show for ALL script users (including yourself)
+    ✓ NEW: Avatar preview in overhead cards
+    ✓ FIXED: Superman fly animations (all directions + backward)
     ✓ Auto-reexecution on rejoin/server hop
     ✓ Improved draggable button styling
-    ✓ !update command for easy script updates
-    ✓ !debug command for troubleshooting
-    ✓ !refresh command to recreate cards
-    ✓ Fixed admin fly (stable, no bugs)
     ✓ Professional UI/UX
     
-    KEY FIX: Uses Player Attributes instead of ReplicatedStorage for detection
+    KEY FIXES:
+    - Uses Player Attributes for detection
+    - Cards visible to everyone using the script
+    - Avatar thumbnails in overhead
+    - Full directional animations for Superman
 ]]
 
 local Players = game:GetService("Players")
@@ -360,15 +362,11 @@ local function showNotification(message, notifType)
     end
 end
 
--- User Card Creation
+-- User Card Creation (WITH AVATAR PREVIEW!)
 local function createUserCard(targetPlayer)
     debugLog("CARD", "Creating card for: " .. targetPlayer.Name)
     
-    if targetPlayer == player then
-        debugLog("CARD", "Skipping self")
-        return
-    end
-    
+    -- DON'T SKIP SELF - This was the bug!
     if not isScriptUser(targetPlayer) then 
         debugLog("CARD", targetPlayer.Name .. " is NOT a script user")
         return 
@@ -397,7 +395,7 @@ local function createUserCard(targetPlayer)
     
     local billboardGui = Instance.new("BillboardGui")
     billboardGui.Name = "UserCard"
-    billboardGui.Size = UDim2.new(0, 280, 0, 80)
+    billboardGui.Size = UDim2.new(0, 320, 0, 100)
     billboardGui.StudsOffset = Vector3.new(0, 3.5, 0)
     billboardGui.AlwaysOnTop = true
     billboardGui.Parent = head
@@ -425,19 +423,43 @@ local function createUserCard(targetPlayer)
     
     createCorner(glow, 14)
     
+    -- AVATAR PREVIEW
+    local avatarFrame = Instance.new("Frame")
+    avatarFrame.Size = UDim2.new(0, 80, 0, 80)
+    avatarFrame.Position = UDim2.new(0, 8, 0, 10)
+    avatarFrame.BackgroundColor3 = CONFIG.Colors.BackgroundTransparent
+    avatarFrame.BorderSizePixel = 0
+    avatarFrame.Parent = card
+    
+    createCorner(avatarFrame, 12)
+    createStroke(avatarFrame, 2)
+    
+    local avatarImage = Instance.new("ImageLabel")
+    avatarImage.Size = UDim2.new(1, -4, 1, -4)
+    avatarImage.Position = UDim2.new(0, 2, 0, 2)
+    avatarImage.BackgroundTransparency = 1
+    avatarImage.Image = Players:GetUserThumbnailAsync(targetPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+    avatarImage.Parent = avatarFrame
+    
+    createCorner(avatarImage, 10)
+    
     local logo = Instance.new("TextLabel")
-    logo.Size = UDim2.new(0, 50, 0, 50)
-    logo.Position = UDim2.new(0, 8, 0.5, -25)
-    logo.BackgroundTransparency = 1
+    logo.Size = UDim2.new(0, 40, 0, 40)
+    logo.Position = UDim2.new(0, 5, 0, 5)
+    logo.BackgroundColor3 = CONFIG.Colors.Primary
+    logo.BackgroundTransparency = 0.3
     logo.Text = "$"
-    logo.TextColor3 = CONFIG.Colors.Primary
-    logo.TextSize = 36
+    logo.TextColor3 = CONFIG.Colors.Text
+    logo.TextSize = 28
     logo.Font = Enum.Font.GothamBold
-    logo.Parent = card
+    logo.ZIndex = 2
+    logo.Parent = avatarFrame
+    
+    createCorner(logo, 8)
     
     local typingText = Instance.new("TextLabel")
-    typingText.Size = UDim2.new(1, -68, 0, 25)
-    typingText.Position = UDim2.new(0, 63, 0, 8)
+    typingText.Size = UDim2.new(1, -108, 0, 25)
+    typingText.Position = UDim2.new(0, 98, 0, 8)
     typingText.BackgroundTransparency = 1
     typingText.Text = ""
     typingText.TextColor3 = CONFIG.Colors.Text
@@ -447,8 +469,8 @@ local function createUserCard(targetPlayer)
     typingText.Parent = card
     
     local infoText = Instance.new("TextLabel")
-    infoText.Size = UDim2.new(1, -68, 0, 20)
-    infoText.Position = UDim2.new(0, 63, 0, 35)
+    infoText.Size = UDim2.new(1, -108, 0, 20)
+    infoText.Position = UDim2.new(0, 98, 0, 35)
     infoText.BackgroundTransparency = 1
     infoText.Text = playerInfo.executor .. " | " .. playerInfo.device
     infoText.TextColor3 = CONFIG.Colors.TextSecondary
@@ -458,8 +480,8 @@ local function createUserCard(targetPlayer)
     infoText.Parent = card
     
     local usernameText = Instance.new("TextLabel")
-    usernameText.Size = UDim2.new(1, -68, 0, 18)
-    usernameText.Position = UDim2.new(0, 63, 0, 55)
+    usernameText.Size = UDim2.new(1, -108, 0, 18)
+    usernameText.Position = UDim2.new(0, 98, 0, 55)
     usernameText.BackgroundTransparency = 1
     usernameText.Text = "@" .. targetPlayer.Name
     usernameText.TextColor3 = CONFIG.Colors.Primary
@@ -527,38 +549,37 @@ local function monitorScriptUsers()
         return false
     end
     
+    -- Create cards for ALL players including self
     for _, targetPlayer in ipairs(Players:GetPlayers()) do
-        if targetPlayer ~= player then
-            if isScriptUser(targetPlayer) and targetPlayer.Character then
-                safeCreateCard(targetPlayer)
-            end
-            
-            targetPlayer:GetAttributeChangedSignal(ATTRIBUTE_NAME):Connect(function()
-                if not scriptActive then return end
-                debugLog("MONITOR", "Attribute changed for " .. targetPlayer.Name)
-                
-                if isScriptUser(targetPlayer) then
-                    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
-                        safeCreateCard(targetPlayer)
-                    end
-                else
-                    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
-                        local card = targetPlayer.Character.Head:FindFirstChild("UserCard")
-                        if card then card:Destroy() end
-                    end
-                end
-            end)
-            
-            targetPlayer.CharacterAdded:Connect(function()
-                if not scriptActive or not isScriptUser(targetPlayer) then return end
-                wait(1.5)
-                safeCreateCard(targetPlayer)
-            end)
+        if isScriptUser(targetPlayer) and targetPlayer.Character then
+            safeCreateCard(targetPlayer)
         end
+        
+        targetPlayer:GetAttributeChangedSignal(ATTRIBUTE_NAME):Connect(function()
+            if not scriptActive then return end
+            debugLog("MONITOR", "Attribute changed for " .. targetPlayer.Name)
+            
+            if isScriptUser(targetPlayer) then
+                if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+                    safeCreateCard(targetPlayer)
+                end
+            else
+                if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+                    local card = targetPlayer.Character.Head:FindFirstChild("UserCard")
+                    if card then card:Destroy() end
+                end
+            end
+        end)
+        
+        targetPlayer.CharacterAdded:Connect(function()
+            if not scriptActive or not isScriptUser(targetPlayer) then return end
+            wait(1.5)
+            safeCreateCard(targetPlayer)
+        end)
     end
     
     Players.PlayerAdded:Connect(function(newPlayer)
-        if not scriptActive or newPlayer == player then return end
+        if not scriptActive then return end
         
         newPlayer:GetAttributeChangedSignal(ATTRIBUTE_NAME):Connect(function()
             if not scriptActive then return end
@@ -580,8 +601,6 @@ local function monitorScriptUsers()
         lastCheck = tick()
         
         for _, targetPlayer in ipairs(Players:GetPlayers()) do
-            if targetPlayer == player then continue end
-            
             local shouldHaveCard = isScriptUser(targetPlayer)
             local hasCard = targetPlayer.Character 
                 and targetPlayer.Character:FindFirstChild("Head") 
@@ -741,7 +760,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -90, 1, 0)
 title.Position = UDim2.new(0, 75, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "Command Menu v5.1"
+title.Text = "Command Menu v5.2"
 title.TextColor3 = CONFIG.Colors.Text
 title.TextSize = 24
 title.Font = Enum.Font.GothamBold
@@ -848,7 +867,7 @@ scrollFrame.Parent = mainFrame
 createCorner(scrollFrame, 12)
 
 local infoLabel = Instance.new("TextLabel")
-infoLabel.Size = UDim2.new(1, -20, 0, 2200)
+infoLabel.Size = UDim2.new(1, -20, 0, 2300)
 infoLabel.Position = UDim2.new(0, 10, 0, 10)
 infoLabel.BackgroundTransparency = 1
 infoLabel.Text = [[Available Commands:
@@ -859,7 +878,7 @@ MOVEMENT:
 !flyspeed [number] - Set fly speed
 !rsfly - Reset fly speed
 
-!smfly / !superman - Superman fly
+!smfly / !superman - Superman fly (FIXED ANIMATIONS!)
 !unsmfly / !unsuperman - Disable superman
 !smspeed [number] - Superman speed
 !rssm - Reset superman speed
@@ -914,11 +933,11 @@ UTILITY:
 !unexecute - Remove script
 !help - Show commands
 
-NEW IN v5.1:
-✓ FIXED overhead cards (now use Player Attributes)
-✓ Cards show for ALL script users
-✓ !debug command for troubleshooting
-✓ !refresh command to recreate cards
+NEW IN v5.2:
+✓ FIXED: Overhead cards now show for EVERYONE (including yourself!)
+✓ NEW: Avatar preview in overhead cards
+✓ FIXED: Superman fly animations (all directions + backward)
+✓ Cards visible to all script users
 
 Press F9 to open console for debug logs!]]
 infoLabel.TextColor3 = CONFIG.Colors.TextSecondary
@@ -1047,7 +1066,7 @@ local function disableFly()
     showNotification("Fly disabled!", "success")
 end
 
--- SUPERMAN FLY
+-- SUPERMAN FLY (FIXED WITH ALL ANIMATIONS!)
 local supermanAnim = nil
 
 local function enableSupermanFly()
@@ -1071,19 +1090,29 @@ local function enableSupermanFly()
     humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
     humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
     
+    -- Load all animations
     local idleAnim = Instance.new("Animation")
     idleAnim.AnimationId = "rbxassetid://104879320142507"
     local moveAnim = Instance.new("Animation")
     moveAnim.AnimationId = "rbxassetid://140087168717341"
+    local backwardAnim = Instance.new("Animation")
+    backwardAnim.AnimationId = "rbxassetid://103252599320561"
     
     local idleTrack = humanoid:LoadAnimation(idleAnim)
     local moveTrack = humanoid:LoadAnimation(moveAnim)
+    local backwardTrack = humanoid:LoadAnimation(backwardAnim)
     
     idleTrack.Priority = Enum.AnimationPriority.Action4
     moveTrack.Priority = Enum.AnimationPriority.Action4
+    backwardTrack.Priority = Enum.AnimationPriority.Action4
     idleTrack:Play()
     
-    supermanAnim = {idle = idleTrack, move = moveTrack, current = "idle"}
+    supermanAnim = {
+        idle = idleTrack, 
+        move = moveTrack,
+        backward = backwardTrack,
+        current = "idle"
+    }
     
     activeConnections.supermanFly = RunService.Heartbeat:Connect(function()
         if not commandStates.supermanFly then
@@ -1092,6 +1121,7 @@ local function enableSupermanFly()
             if supermanAnim then
                 supermanAnim.idle:Stop()
                 supermanAnim.move:Stop()
+                supermanAnim.backward:Stop()
             end
             humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
             humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
@@ -1100,23 +1130,25 @@ local function enableSupermanFly()
         
         local camera = workspace.CurrentCamera
         local moveVector = Vector3.new(0, 0, 0)
-        local horizontalMove = false
+        local isMovingForward = false
+        local isMovingBackward = false
+        local isMovingSideways = false
         
         if UserInputService:IsKeyDown(Enum.KeyCode.W) then
             moveVector = moveVector + (camera.CFrame.LookVector * commandStates.supermanSpeed)
-            horizontalMove = true
+            isMovingForward = true
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.S) then
             moveVector = moveVector - (camera.CFrame.LookVector * commandStates.supermanSpeed)
-            horizontalMove = true
+            isMovingBackward = true
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.A) then
             moveVector = moveVector - (camera.CFrame.RightVector * commandStates.supermanSpeed)
-            horizontalMove = true
+            isMovingSideways = true
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then
             moveVector = moveVector + (camera.CFrame.RightVector * commandStates.supermanSpeed)
-            horizontalMove = true
+            isMovingSideways = true
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
             moveVector = moveVector + Vector3.new(0, commandStates.supermanSpeed, 0)
@@ -1128,15 +1160,25 @@ local function enableSupermanFly()
         bodyVel.Velocity = moveVector
         bodyGyro.CFrame = camera.CFrame
         
-        if horizontalMove then
+        -- Animation logic: backward takes priority, then forward/sideways, then idle
+        if isMovingBackward then
+            if supermanAnim.current ~= "backward" then
+                supermanAnim.idle:Stop()
+                supermanAnim.move:Stop()
+                supermanAnim.backward:Play()
+                supermanAnim.current = "backward"
+            end
+        elseif isMovingForward or isMovingSideways then
             if supermanAnim.current ~= "move" then
                 supermanAnim.idle:Stop()
+                supermanAnim.backward:Stop()
                 supermanAnim.move:Play()
                 supermanAnim.current = "move"
             end
         else
             if supermanAnim.current ~= "idle" then
                 supermanAnim.move:Stop()
+                supermanAnim.backward:Stop()
                 supermanAnim.idle:Play()
                 supermanAnim.current = "idle"
             end
@@ -1162,6 +1204,7 @@ local function disableSupermanFly()
     if supermanAnim then
         supermanAnim.idle:Stop()
         supermanAnim.move:Stop()
+        supermanAnim.backward:Stop()
         supermanAnim = nil
     end
     
@@ -1688,14 +1731,15 @@ end
 local function listScriptUsers()
     local userList = {}
     for _, p in ipairs(Players:GetPlayers()) do
-        if isScriptUser(p) and p ~= player then
+        if isScriptUser(p) then
             local info = getPlayerInfo(p)
-            table.insert(userList, p.Name .. " (" .. info.executor .. " | " .. info.device .. ")")
+            local prefix = (p == player) and "(YOU) " or ""
+            table.insert(userList, prefix .. p.Name .. " (" .. info.executor .. " | " .. info.device .. ")")
         end
     end
     
     if #userList == 0 then
-        showNotification("No other script users!", "info")
+        showNotification("No script users!", "info")
     else
         showNotification("Script Users (" .. #userList .. "):\n" .. table.concat(userList, "\n"), "info")
     end
@@ -1709,7 +1753,7 @@ local function debugCommand()
         showNotification("Debug mode ON - Check F9", "success")
         
         print("═══════════════════════════════════════")
-        print("$ERRATED DEBUG INFO")
+        print("$ERRATED DEBUG INFO v5.2")
         print("═══════════════════════════════════════")
         print("Your Info:")
         print("  Name: " .. player.Name)
@@ -1725,7 +1769,8 @@ local function debugCommand()
             if attr then
                 count = count + 1
                 local info = getPlayerInfo(p)
-                print(string.format("  [%d] %s", count, p.Name))
+                local selfMarker = (p == player) and " (YOU)" or ""
+                print(string.format("  [%d] %s%s", count, p.Name, selfMarker))
                 print(string.format("      %s | %s", info.executor, info.device))
                 
                 if p.Character and p.Character:FindFirstChild("Head") then
@@ -1735,10 +1780,10 @@ local function debugCommand()
             end
         end
         if count == 0 then
-            print("  (No other users)")
+            print("  (No users)")
         end
         print("───────────────────────────────────────")
-        print("Total Users: " .. count + 1)
+        print("Total Users: " .. count)
         print("Total Cards: " .. #allUserCards)
         print("═══════════════════════════════════════")
     else
@@ -1757,7 +1802,7 @@ local function refreshCards()
     
     local count = 0
     for _, targetPlayer in ipairs(Players:GetPlayers()) do
-        if targetPlayer ~= player and isScriptUser(targetPlayer) then
+        if isScriptUser(targetPlayer) then
             if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
                 local success = pcall(function()
                     createUserCard(targetPlayer)
@@ -2070,17 +2115,18 @@ end
 commandStates.originalGravity = workspace.Gravity
 
 print("═══════════════════════════════════════")
-print("$ERRATED v5.1 - FIXED OVERHEAD CARDS")
+print("$ERRATED v5.2 - ULTRA FIXED")
 print("═══════════════════════════════════════")
 print("User: " .. player.Name)
 print("UserId: " .. player.UserId)
 print("Executor: " .. EXECUTOR)
 print("Device: " .. DEVICE)
 print("───────────────────────────────────────")
-print("✓ Using Player Attributes (replicates!)")
+print("✓ Overhead cards show for EVERYONE")
+print("✓ Avatar previews in cards")
+print("✓ Superman fly fully animated")
 print("✓ Type !help for commands")
 print("✓ Type !debug for diagnostics")
-print("✓ Press F9 to open console")
 print("═══════════════════════════════════════")
 
 broadcastPresence()
@@ -2107,10 +2153,10 @@ if isAutoReexec then
     showNotification("$errated auto-reexecuted!", "success")
 else
     wait(1)
-    showNotification("$errated v5.1 executed!", "success")
-    showNotification("Overhead cards FIXED! Try !debug", "info")
+    showNotification("$errated v5.2 executed!", "success")
+    showNotification("Cards show for EVERYONE now!", "info")
 end
 
 print("Script loaded successfully!")
-print("Overhead cards will appear for all script users.")
-print("If you don't see cards, type: !debug")
+print("Your overhead card is now visible!")
+print("Type !debug to verify everything works.")
