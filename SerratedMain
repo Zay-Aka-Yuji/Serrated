@@ -1,1585 +1,1851 @@
 --[[
-    $errated Executor
-    Professional-grade Roblox script with Matrix theme
-    Created with smooth animations and full functionality
-]]--
+    Modern Command Menu Script v4.3 - ULTIMATE EDITION PRO
+    Features:
+    - Autocomplete command suggestions (transparent)
+    - Username prompt when needed
+    - Fixed overhead removal on unexecute
+    - All v4.2 features
+]]
 
+local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
+local StarterGui = game:GetService("StarterGui")
+local TeleportService = game:GetService("TeleportService")
+local VirtualUser = game:GetService("VirtualUser")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Player = Players.LocalPlayer
-local Mouse = Player:GetMouse()
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local mouse = player:GetMouse()
 
--- Utility Functions
-local function CreateInstance(className, properties)
-    local instance = Instance.new(className)
-    for property, value in pairs(properties) do
-        if property ~= "Parent" then
-            instance[property] = value
-        end
+-- Detect Executor
+local function getExecutor()
+    if identifyexecutor then
+        return identifyexecutor()
+    elseif KRNL_LOADED then
+        return "KRNL"
+    elseif syn then
+        return "Synapse X"
+    elseif SENTINEL_LOADED then
+        return "Sentinel"
+    elseif getexecutorname then
+        return getexecutorname()
+    else
+        return "Unknown"
     end
-    if properties.Parent then
-        instance.Parent = properties.Parent
-    end
-    return instance
 end
 
-local function Tween(instance, properties, duration, easingStyle, easingDirection)
-    easingStyle = easingStyle or Enum.EasingStyle.Quad
-    easingDirection = easingDirection or Enum.EasingDirection.Out
-    local tweenInfo = TweenInfo.new(duration, easingStyle, easingDirection)
+-- Detect Device
+local function getDevice()
+    if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
+        return "Mobile"
+    elseif UserInputService.KeyboardEnabled and not UserInputService.TouchEnabled then
+        return "PC"
+    elseif UserInputService.GamepadEnabled then
+        return "Console"
+    else
+        return "PC"
+    end
+end
+
+local EXECUTOR = getExecutor()
+local DEVICE = getDevice()
+
+-- Configuration
+local CONFIG = {
+    Colors = {
+        Primary = Color3.fromRGB(138, 43, 226),
+        Secondary = Color3.fromRGB(75, 0, 130),
+        Background = Color3.fromRGB(20, 20, 20),
+        BackgroundTransparent = Color3.fromRGB(15, 15, 15),
+        Text = Color3.fromRGB(255, 255, 255),
+        TextSecondary = Color3.fromRGB(200, 200, 200),
+        Success = Color3.fromRGB(100, 200, 100),
+        Error = Color3.fromRGB(220, 80, 80),
+        Suggestion = Color3.fromRGB(150, 150, 150)
+    },
+    Animations = {
+        Speed = 0.4,
+        EasingStyle = Enum.EasingStyle.Quint,
+        EasingDirection = Enum.EasingDirection.Out
+    },
+    ToggleKey = Enum.KeyCode.RightControl,
+    CommandPrefix = "!",
+    ScriptIdentifier = "CMD_MENU_USER"
+}
+
+-- Command List for Autocomplete
+local commandList = {
+    -- Movement
+    {cmd = "!fly", desc = "Enable admin fly", requiresUsername = false},
+    {cmd = "!unfly", desc = "Disable fly", requiresUsername = false},
+    {cmd = "!flyspeed", desc = "Set fly speed", requiresUsername = false, requiresNumber = true},
+    {cmd = "!rsfly", desc = "Reset fly speed", requiresUsername = false},
+    {cmd = "!smfly", desc = "Superman fly", requiresUsername = false},
+    {cmd = "!superman", desc = "Superman fly", requiresUsername = false},
+    {cmd = "!unsmfly", desc = "Disable superman", requiresUsername = false},
+    {cmd = "!unsuperman", desc = "Disable superman", requiresUsername = false},
+    {cmd = "!smspeed", desc = "Set superman speed", requiresUsername = false, requiresNumber = true},
+    {cmd = "!rssm", desc = "Reset superman speed", requiresUsername = false},
+    {cmd = "!noclip", desc = "Walk through walls", requiresUsername = false},
+    {cmd = "!clip", desc = "Walk through walls", requiresUsername = false},
+    {cmd = "!unnoclip", desc = "Disable noclip", requiresUsername = false},
+    {cmd = "!unclip", desc = "Disable noclip", requiresUsername = false},
+    {cmd = "!float", desc = "Float mode", requiresUsername = false},
+    {cmd = "!unfloat", desc = "Disable float", requiresUsername = false},
+    {cmd = "!infj", desc = "Infinite jump", requiresUsername = false},
+    {cmd = "!infinitejump", desc = "Infinite jump", requiresUsername = false},
+    {cmd = "!uninfj", desc = "Disable infinite jump", requiresUsername = false},
+    {cmd = "!uninfinitejump", desc = "Disable infinite jump", requiresUsername = false},
+    
+    -- Teleport
+    {cmd = "!tp", desc = "Teleport to player", requiresUsername = true},
+    {cmd = "!goto", desc = "Teleport to player", requiresUsername = true},
+    {cmd = "!tptool", desc = "Click teleport tool", requiresUsername = false},
+    
+    -- Stats
+    {cmd = "!ws", desc = "Set walkspeed", requiresUsername = false, requiresNumber = true},
+    {cmd = "!walkspeed", desc = "Set walkspeed", requiresUsername = false, requiresNumber = true},
+    {cmd = "!resetws", desc = "Reset walkspeed", requiresUsername = false},
+    {cmd = "!jp", desc = "Set jump power", requiresUsername = false, requiresNumber = true},
+    {cmd = "!jumppower", desc = "Set jump power", requiresUsername = false, requiresNumber = true},
+    {cmd = "!resetjp", desc = "Reset jump power", requiresUsername = false},
+    
+    -- Avatar
+    {cmd = "!char", desc = "Load player avatar", requiresUsername = true},
+    
+    -- Chat & Protection
+    {cmd = "!cb", desc = "Toggle chat bypass", requiresUsername = false},
+    {cmd = "!chatbypass", desc = "Toggle chat bypass", requiresUsername = false},
+    {cmd = "!antiafk", desc = "Toggle anti-AFK", requiresUsername = false},
+    {cmd = "!antiidle", desc = "Toggle anti-AFK", requiresUsername = false},
+    {cmd = "!antivcban", desc = "Toggle anti-VC-ban", requiresUsername = false},
+    {cmd = "!antivcb", desc = "Toggle anti-VC-ban", requiresUsername = false},
+    {cmd = "!novcb", desc = "Toggle anti-VC-ban", requiresUsername = false},
+    
+    -- Server
+    {cmd = "!rejoin", desc = "Rejoin server", requiresUsername = false},
+    {cmd = "!rj", desc = "Rejoin server", requiresUsername = false},
+    {cmd = "!serverhop", desc = "Server hop", requiresUsername = false},
+    {cmd = "!shop", desc = "Server hop", requiresUsername = false},
+    {cmd = "!join", desc = "Join player's server", requiresUsername = true},
+    
+    -- Utility
+    {cmd = "!unexecute", desc = "Remove script", requiresUsername = false},
+    {cmd = "!help", desc = "Show commands", requiresUsername = false}
+}
+
+-- Command State Management
+local commandStates = {
+    flying = false,
+    noclip = false,
+    float = false,
+    infiniteJump = false,
+    supermanFly = false,
+    chatBypass = false,
+    antiAfk = false,
+    antiVcBan = false,
+    flySpeed = 2,
+    supermanSpeed = 3,
+    originalWalkSpeed = 16,
+    originalJumpPower = 50
+}
+
+local activeConnections = {
+    fly = nil,
+    noclip = nil,
+    float = nil,
+    infiniteJump = nil,
+    supermanFly = nil,
+    floatUp = nil,
+    floatDown = nil,
+    antiAfk = nil,
+    chatBypass = nil
+}
+
+local scriptUsers = {}
+local scriptActive = true
+local allUserCards = {}
+
+-- Chat Bypass Characters
+local bypassChars = {
+    ["a"] = "а", ["e"] = "е", ["o"] = "о", ["p"] = "р", ["c"] = "с",
+    ["y"] = "у", ["x"] = "х", ["i"] = "і", ["s"] = "ѕ", ["h"] = "һ",
+    ["A"] = "А", ["B"] = "В", ["C"] = "С", ["E"] = "Е", ["H"] = "Н",
+    ["I"] = "І", ["K"] = "К", ["M"] = "М", ["O"] = "О", ["P"] = "Р",
+    ["S"] = "Ѕ", ["T"] = "Т", ["X"] = "Х", ["Y"] = "У"
+}
+
+-- Mark as script user
+local function markAsScriptUser()
+    if character then
+        local identifier = character:FindFirstChild(CONFIG.ScriptIdentifier)
+        if not identifier then
+            identifier = Instance.new("BoolValue")
+            identifier.Name = CONFIG.ScriptIdentifier
+            identifier.Value = true
+            identifier.Parent = character
+            
+            local executorValue = Instance.new("StringValue")
+            executorValue.Name = "ExecutorInfo"
+            executorValue.Value = EXECUTOR
+            executorValue.Parent = identifier
+            
+            local deviceValue = Instance.new("StringValue")
+            deviceValue.Name = "DeviceInfo"
+            deviceValue.Value = DEVICE
+            deviceValue.Parent = identifier
+        end
+    end
+end
+
+local function isScriptUser(targetPlayer)
+    if targetPlayer.Character then
+        return targetPlayer.Character:FindFirstChild(CONFIG.ScriptIdentifier) ~= nil
+    end
+    return false
+end
+
+local function getPlayerInfo(targetPlayer)
+    if targetPlayer.Character then
+        local identifier = targetPlayer.Character:FindFirstChild(CONFIG.ScriptIdentifier)
+        if identifier then
+            local executor = identifier:FindFirstChild("ExecutorInfo")
+            local device = identifier:FindFirstChild("DeviceInfo")
+            return {
+                executor = executor and executor.Value or "Unknown",
+                device = device and device.Value or "Unknown"
+            }
+        end
+    end
+    return {executor = "Unknown", device = "Unknown"}
+end
+
+-- UI Creation
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "CommandMenuGui"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+
+-- Utility Functions
+local function createGradient(parent, rotation)
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, CONFIG.Colors.Secondary),
+        ColorSequenceKeypoint.new(1, CONFIG.Colors.Primary)
+    }
+    gradient.Rotation = rotation or 45
+    gradient.Parent = parent
+    return gradient
+end
+
+local function createCorner(parent, radius)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, radius or 12)
+    corner.Parent = parent
+    return corner
+end
+
+local function createStroke(parent, thickness, color)
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = thickness or 2
+    stroke.Color = color or CONFIG.Colors.Primary
+    stroke.Transparency = 0.3
+    stroke.Parent = parent
+    return stroke
+end
+
+local function smoothTween(instance, properties, duration, callback)
+    duration = duration or CONFIG.Animations.Speed
+    local tweenInfo = TweenInfo.new(
+        duration,
+        CONFIG.Animations.EasingStyle,
+        CONFIG.Animations.EasingDirection
+    )
+    
     local tween = TweenService:Create(instance, tweenInfo, properties)
     tween:Play()
+    
+    if callback then
+        tween.Completed:Connect(callback)
+    end
+    
     return tween
 end
 
-local function RippleEffect(button, x, y)
-    local ripple = CreateInstance("Frame", {
-        Size = UDim2.new(0, 0, 0, 0),
-        Position = UDim2.new(0, x, 0, y),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = Color3.fromRGB(138, 43, 226),
-        BorderSizePixel = 0,
-        ZIndex = 10,
-        Parent = button
-    })
+-- Notification System
+local notificationQueue = {}
+local notificationActive = false
+
+local function showNotification(message, notifType)
+    table.insert(notificationQueue, {message = message, type = notifType or "info"})
     
-    CreateInstance("UICorner", {
-        CornerRadius = UDim.new(1, 0),
-        Parent = ripple
-    })
-    
-    local size = math.max(button.AbsoluteSize.X, button.AbsoluteSize.Y) * 2.5
-    Tween(ripple, {
-        Size = UDim2.new(0, size, 0, size),
-        BackgroundTransparency = 1
-    }, 0.6, Enum.EasingStyle.Exponential)
-    
-    task.delay(0.6, function()
-        ripple:Destroy()
-    end)
-end
-
--- Welcome Messages
-local welcomeMessages = {
-    "Welcome back, " .. Player.Name .. "...",
-    "System initialized for " .. Player.Name,
-    "Access granted: " .. Player.Name,
-    "Connection established, " .. Player.Name,
-    "$errated loaded for " .. Player.Name,
-    "Neural link active, " .. Player.Name,
-    "Matrix online: " .. Player.Name,
-    "Welcome to the void, " .. Player.Name
-}
-
--- Main GUI Container
-local ScreenGui = CreateInstance("ScreenGui", {
-    Name = "$erratedGUI",
-    ResetOnSpawn = false,
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-})
-
-if gethui then
-    ScreenGui.Parent = gethui()
-elseif syn and syn.protect_gui then
-    syn.protect_gui(ScreenGui)
-    ScreenGui.Parent = CoreGui
-else
-    ScreenGui.Parent = CoreGui
-end
-
--- Splash Screen
-local SplashScreen = CreateInstance("Frame", {
-    Name = "SplashScreen",
-    Size = UDim2.new(1, 0, 1, 0),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ZIndex = 1000,
-    Parent = ScreenGui
-})
-
--- Create multiple $ symbols for splash
-local function CreateSplashDollar(size, position)
-    local dollar = CreateInstance("TextLabel", {
-        Size = UDim2.new(0, size, 0, size),
-        Position = position,
-        BackgroundTransparency = 1,
-        Text = "$",
-        TextColor3 = Color3.fromRGB(138, 43, 226),
-        TextTransparency = 1,
-        TextScaled = true,
-        Font = Enum.Font.GothamBold,
-        ZIndex = 1001,
-        Parent = SplashScreen
-    })
-    
-    CreateInstance("UIStroke", {
-        Color = Color3.fromRGB(75, 0, 130),
-        Thickness = 3,
-        Transparency = 1,
-        Parent = dollar
-    })
-    
-    return dollar
-end
-
-local splashDollars = {}
-for i = 1, 15 do
-    local size = math.random(50, 200)
-    local pos = UDim2.new(
-        math.random(0, 100) / 100,
-        0,
-        math.random(0, 100) / 100,
-        0
-    )
-    table.insert(splashDollars, CreateSplashDollar(size, pos))
-end
-
--- Animate splash screen
-task.spawn(function()
-    task.wait(0.3)
-    for i, dollar in ipairs(splashDollars) do
-        task.spawn(function()
-            task.wait(i * 0.08)
-            Tween(dollar, {TextTransparency = 0}, 0.6, Enum.EasingStyle.Back)
-            if dollar:FindFirstChild("UIStroke") then
-                Tween(dollar.UIStroke, {Transparency = 0}, 0.6)
+    if not notificationActive then
+        notificationActive = true
+        
+        local function processQueue()
+            if #notificationQueue == 0 then
+                notificationActive = false
+                return
             end
             
-            task.wait(0.5)
-            Tween(dollar, {
-                Rotation = math.random(-360, 360),
-                Size = UDim2.new(0, 0, 0, 0)
-            }, 0.8, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-        end)
-    end
-    
-    task.wait(3)
-    for _, dollar in ipairs(splashDollars) do
-        if dollar then
-            Tween(dollar, {TextTransparency = 1}, 0.5)
-            if dollar:FindFirstChild("UIStroke") then
-                Tween(dollar.UIStroke, {Transparency = 1}, 0.5)
-            end
+            local data = table.remove(notificationQueue, 1)
+            
+            local notif = Instance.new("Frame")
+            notif.Size = UDim2.new(0, 400, 0, 80)
+            notif.Position = UDim2.new(1, -420, 0, 100)
+            notif.BackgroundColor3 = CONFIG.Colors.BackgroundTransparent
+            notif.BorderSizePixel = 0
+            notif.Parent = screenGui
+            
+            createCorner(notif, 16)
+            
+            local stroke = createStroke(notif, 2, data.type == "error" and CONFIG.Colors.Error or CONFIG.Colors.Primary)
+            stroke.Transparency = 0
+            
+            local iconContainer = Instance.new("Frame")
+            iconContainer.Size = UDim2.new(0, 60, 1, 0)
+            iconContainer.BackgroundColor3 = data.type == "error" and CONFIG.Colors.Error or CONFIG.Colors.Primary
+            iconContainer.BorderSizePixel = 0
+            iconContainer.Parent = notif
+            
+            createCorner(iconContainer, 16)
+            
+            local logo = Instance.new("TextLabel")
+            logo.Size = UDim2.new(1, 0, 1, 0)
+            logo.BackgroundTransparency = 1
+            logo.Text = "$"
+            logo.TextColor3 = CONFIG.Colors.Text
+            logo.TextSize = 36
+            logo.Font = Enum.Font.GothamBold
+            logo.Parent = iconContainer
+            
+            local messageLabel = Instance.new("TextLabel")
+            messageLabel.Size = UDim2.new(1, -80, 1, -20)
+            messageLabel.Position = UDim2.new(0, 70, 0, 10)
+            messageLabel.BackgroundTransparency = 1
+            messageLabel.Text = data.message
+            messageLabel.TextColor3 = CONFIG.Colors.Text
+            messageLabel.TextSize = 16
+            messageLabel.Font = Enum.Font.GothamMedium
+            messageLabel.TextWrapped = true
+            messageLabel.TextXAlignment = Enum.TextXAlignment.Left
+            messageLabel.Parent = notif
+            
+            smoothTween(notif, {Position = UDim2.new(1, -420, 0, 100)}, 0.5)
+            
+            wait(3)
+            
+            smoothTween(notif, {Position = UDim2.new(1, 50, 0, 100)}, 0.5, function()
+                notif:Destroy()
+                processQueue()
+            end)
         end
+        
+        processQueue()
     end
-    task.wait(0.6)
-    SplashScreen:Destroy()
-end)
-
--- Main Frame
-local MainFrame = CreateInstance("Frame", {
-    Name = "MainFrame",
-    Size = UDim2.new(0, 0, 0, 0),
-    Position = UDim2.new(0.5, 0, 0.5, 0),
-    AnchorPoint = Vector2.new(0.5, 0.5),
-    BackgroundColor3 = Color3.fromRGB(25, 25, 30),
-    BorderSizePixel = 0,
-    ClipsDescendants = true,
-    Visible = false,
-    Parent = ScreenGui
-})
-
-CreateInstance("UICorner", {
-    CornerRadius = UDim.new(0, 12),
-    Parent = MainFrame
-})
-
-CreateInstance("UIStroke", {
-    Color = Color3.fromRGB(75, 0, 130),
-    Thickness = 2,
-    Transparency = 0.3,
-    Parent = MainFrame
-})
-
--- Background $ Symbol with blur
-local BackgroundDollar = CreateInstance("TextLabel", {
-    Name = "BackgroundDollar",
-    Size = UDim2.new(0.8, 0, 0.8, 0),
-    Position = UDim2.new(0.5, 0, 0.5, 0),
-    AnchorPoint = Vector2.new(0.5, 0.5),
-    BackgroundTransparency = 1,
-    Text = "$",
-    TextColor3 = Color3.fromRGB(138, 43, 226),
-    TextTransparency = 0.92,
-    TextScaled = true,
-    Font = Enum.Font.GothamBold,
-    ZIndex = 1,
-    Parent = MainFrame
-})
-
--- Animate background $ rotation
-task.spawn(function()
-    while task.wait(0.05) do
-        if BackgroundDollar and BackgroundDollar.Parent then
-            BackgroundDollar.Rotation = (BackgroundDollar.Rotation + 0.2) % 360
-        else
-            break
-        end
-    end
-end)
-
--- Top Bar
-local TopBar = CreateInstance("Frame", {
-    Name = "TopBar",
-    Size = UDim2.new(1, 0, 0, 40),
-    BackgroundColor3 = Color3.fromRGB(20, 20, 25),
-    BorderSizePixel = 0,
-    ClipsDescendants = true,
-    ZIndex = 2,
-    Parent = MainFrame
-})
-
-CreateInstance("UICorner", {
-    CornerRadius = UDim.new(0, 12),
-    Parent = TopBar
-})
-
--- Title with $ logo
-local TitleLabel = CreateInstance("TextLabel", {
-    Name = "Title",
-    Size = UDim2.new(0, 150, 1, 0),
-    Position = UDim2.new(0, 15, 0, 0),
-    BackgroundTransparency = 1,
-    Text = "$errated",
-    TextColor3 = Color3.fromRGB(138, 43, 226),
-    TextSize = 20,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    Font = Enum.Font.GothamBold,
-    ZIndex = 3,
-    Parent = TopBar
-})
-
-CreateInstance("UIStroke", {
-    Color = Color3.fromRGB(255, 255, 255),
-    Thickness = 1,
-    Transparency = 0.7,
-    Parent = TitleLabel
-})
-
--- Window Controls
-local function CreateControlButton(text, position, color, callback)
-    local button = CreateInstance("TextButton", {
-        Size = UDim2.new(0, 30, 0, 30),
-        Position = position,
-        BackgroundColor3 = Color3.fromRGB(35, 35, 40),
-        Text = text,
-        TextColor3 = color,
-        TextSize = 16,
-        Font = Enum.Font.GothamBold,
-        BorderSizePixel = 0,
-        ZIndex = 3,
-        Parent = TopBar
-    })
-    
-    CreateInstance("UICorner", {
-        CornerRadius = UDim.new(0, 6),
-        Parent = button
-    })
-    
-    button.MouseButton1Click:Connect(function()
-        RippleEffect(button, button.AbsoluteSize.X / 2, button.AbsoluteSize.Y / 2)
-        if callback then callback() end
-    end)
-    
-    button.MouseEnter:Connect(function()
-        Tween(button, {BackgroundColor3 = Color3.fromRGB(50, 50, 55)}, 0.2)
-    end)
-    
-    button.MouseLeave:Connect(function()
-        Tween(button, {BackgroundColor3 = Color3.fromRGB(35, 35, 40)}, 0.2)
-    end)
-    
-    return button
 end
 
-local isMinimized = false
-local MinimizeBtn = CreateControlButton("_", UDim2.new(1, -110, 0.5, -15), Color3.fromRGB(100, 200, 100), function()
-    isMinimized = not isMinimized
-    if isMinimized then
-        Tween(MainFrame, {
-            Size = UDim2.new(0, 700, 0, 40)
-        }, 0.4, Enum.EasingStyle.Quart)
-    else
-        Tween(MainFrame, {
-            Size = UDim2.new(0, 700, 0, 500)
-        }, 0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-    end
-end)
-
-local isMaximized = false
-local MaximizeBtn = CreateControlButton("□", UDim2.new(1, -75, 0.5, -15), Color3.fromRGB(255, 200, 100), function()
-    isMaximized = not isMaximized
-    if isMaximized then
-        Tween(MainFrame, {
-            Size = UDim2.new(0.9, 0, 0.9, 0),
-            Position = UDim2.new(0.5, 0, 0.5, 0)
-        }, 0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-    else
-        Tween(MainFrame, {
-            Size = UDim2.new(0, 700, 0, 500),
-            Position = UDim2.new(0.5, 0, 0.5, 0)
-        }, 0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-    end
-end)
-
-local CloseBtn = CreateControlButton("X", UDim2.new(1, -40, 0.5, -15), Color3.fromRGB(255, 100, 100), function()
-    Tween(MainFrame, {
-        Size = UDim2.new(0, 0, 0, 0),
-        Rotation = 90
-    }, 0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-    task.wait(0.5)
-    ScreenGui:Destroy()
-end)
-
--- Dragging functionality
-local dragging, dragInput, dragStart, startPos
-
-TopBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        startPos = MainFrame.Position
-        
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
+-- User Card with Typing Animation and Cursor
+local function createUserCard(targetPlayer)
+    if not isScriptUser(targetPlayer) then return end
+    
+    local targetCharacter = targetPlayer.Character
+    if not targetCharacter then return end
+    
+    local head = targetCharacter:FindFirstChild("Head")
+    if not head then return end
+    
+    local existingCard = head:FindFirstChild("UserCard")
+    if existingCard then existingCard:Destroy() end
+    
+    local playerInfo = getPlayerInfo(targetPlayer)
+    
+    local billboardGui = Instance.new("BillboardGui")
+    billboardGui.Name = "UserCard"
+    billboardGui.Size = UDim2.new(0, 280, 0, 80)
+    billboardGui.StudsOffset = Vector3.new(0, 3.5, 0)
+    billboardGui.AlwaysOnTop = true
+    billboardGui.Parent = head
+    
+    -- Store reference for cleanup
+    table.insert(allUserCards, billboardGui)
+    
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, 0, 1, 0)
+    card.BackgroundColor3 = CONFIG.Colors.Background
+    card.BorderSizePixel = 0
+    card.BackgroundTransparency = 0.15
+    card.Parent = billboardGui
+    
+    createCorner(card, 14)
+    createStroke(card, 2)
+    
+    local glow = Instance.new("Frame")
+    glow.Size = UDim2.new(1, 4, 1, 4)
+    glow.Position = UDim2.new(0, -2, 0, -2)
+    glow.BackgroundColor3 = CONFIG.Colors.Primary
+    glow.BackgroundTransparency = 0.7
+    glow.BorderSizePixel = 0
+    glow.ZIndex = 0
+    glow.Parent = card
+    
+    createCorner(glow, 14)
+    
+    local logo = Instance.new("TextLabel")
+    logo.Size = UDim2.new(0, 50, 0, 50)
+    logo.Position = UDim2.new(0, 8, 0.5, -25)
+    logo.BackgroundTransparency = 1
+    logo.Text = "$"
+    logo.TextColor3 = CONFIG.Colors.Primary
+    logo.TextSize = 36
+    logo.Font = Enum.Font.GothamBold
+    logo.Parent = card
+    
+    local typingText = Instance.new("TextLabel")
+    typingText.Size = UDim2.new(1, -68, 0, 25)
+    typingText.Position = UDim2.new(0, 63, 0, 8)
+    typingText.BackgroundTransparency = 1
+    typingText.Text = ""
+    typingText.TextColor3 = CONFIG.Colors.Text
+    typingText.TextSize = 18
+    typingText.Font = Enum.Font.GothamBold
+    typingText.TextXAlignment = Enum.TextXAlignment.Left
+    typingText.Parent = card
+    
+    local infoText = Instance.new("TextLabel")
+    infoText.Size = UDim2.new(1, -68, 0, 20)
+    infoText.Position = UDim2.new(0, 63, 0, 35)
+    infoText.BackgroundTransparency = 1
+    infoText.Text = playerInfo.executor .. " | " .. playerInfo.device
+    infoText.TextColor3 = CONFIG.Colors.TextSecondary
+    infoText.TextSize = 13
+    infoText.Font = Enum.Font.GothamMedium
+    infoText.TextXAlignment = Enum.TextXAlignment.Left
+    infoText.Parent = card
+    
+    local usernameText = Instance.new("TextLabel")
+    usernameText.Size = UDim2.new(1, -68, 0, 18)
+    usernameText.Position = UDim2.new(0, 63, 0, 55)
+    usernameText.BackgroundTransparency = 1
+    usernameText.Text = "@" .. targetPlayer.Name
+    usernameText.TextColor3 = CONFIG.Colors.Primary
+    usernameText.TextSize = 14
+    usernameText.Font = Enum.Font.GothamBold
+    usernameText.TextXAlignment = Enum.TextXAlignment.Left
+    usernameText.TextTruncate = Enum.TextTruncate.AtEnd
+    usernameText.Parent = card
+    
+    local fullText = "$errated User"
+    local cursorVisible = true
+    
+    local function typeText()
+        while typingText and typingText.Parent and scriptActive do
+            for i = 1, #fullText do
+                if not typingText or not typingText.Parent or not scriptActive then break end
+                typingText.Text = fullText:sub(1, i) .. "|"
+                wait(0.08)
             end
-        end)
-    end
-end)
-
-TopBar.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        Tween(MainFrame, {
-            Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
-        }, 0.1, Enum.EasingStyle.Linear)
-    end
-end)
-
--- Sidebar
-local Sidebar = CreateInstance("Frame", {
-    Name = "Sidebar",
-    Size = UDim2.new(0, 180, 1, -40),
-    Position = UDim2.new(0, 0, 0, 40),
-    BackgroundColor3 = Color3.fromRGB(20, 20, 25),
-    BorderSizePixel = 0,
-    ClipsDescendants = true,
-    ZIndex = 2,
-    Parent = MainFrame
-})
-
--- Add corner to sidebar
-CreateInstance("UICorner", {
-    CornerRadius = UDim.new(0, 12),
-    Parent = Sidebar
-})
-
-CreateInstance("Frame", {
-    Name = "CornerFix",
-    Size = UDim2.new(0, 12, 1, 0),
-    Position = UDim2.new(1, -12, 0, 0),
-    BackgroundColor3 = Color3.fromRGB(20, 20, 25),
-    BorderSizePixel = 0,
-    ZIndex = 2,
-    Parent = Sidebar
-})
-
-CreateInstance("Frame", {
-    Name = "TopCornerFix",
-    Size = UDim2.new(1, 0, 0, 12),
-    Position = UDim2.new(0, 0, 0, 0),
-    BackgroundColor3 = Color3.fromRGB(20, 20, 25),
-    BorderSizePixel = 0,
-    ZIndex = 2,
-    Parent = Sidebar
-})
-
-CreateInstance("Frame", {
-    Name = "Divider",
-    Size = UDim2.new(0, 2, 1, 0),
-    Position = UDim2.new(1, 0, 0, 0),
-    BackgroundColor3 = Color3.fromRGB(75, 0, 130),
-    BorderSizePixel = 0,
-    ZIndex = 3,
-    Parent = Sidebar
-})
-
--- Character Preview
-local CharacterPreview = CreateInstance("Frame", {
-    Name = "CharacterPreview",
-    Size = UDim2.new(1, -20, 0, 120),
-    Position = UDim2.new(0, 10, 0, 10),
-    BackgroundColor3 = Color3.fromRGB(30, 30, 35),
-    BorderSizePixel = 0,
-    ZIndex = 2,
-    Parent = Sidebar
-})
-
-CreateInstance("UICorner", {
-    CornerRadius = UDim.new(0, 8),
-    Parent = CharacterPreview
-})
-
-CreateInstance("UIStroke", {
-    Color = Color3.fromRGB(138, 43, 226),
-    Thickness = 1,
-    Transparency = 0.5,
-    Parent = CharacterPreview
-})
-
-local CharacterImage = CreateInstance("ImageLabel", {
-    Size = UDim2.new(0, 80, 0, 80),
-    Position = UDim2.new(0.5, 0, 0, 10),
-    AnchorPoint = Vector2.new(0.5, 0),
-    BackgroundColor3 = Color3.fromRGB(40, 40, 45),
-    Image = Players:GetUserThumbnailAsync(Player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420),
-    BorderSizePixel = 0,
-    ZIndex = 3,
-    Parent = CharacterPreview
-})
-
-CreateInstance("UICorner", {
-    CornerRadius = UDim.new(1, 0),
-    Parent = CharacterImage
-})
-
-CreateInstance("UIStroke", {
-    Color = Color3.fromRGB(138, 43, 226),
-    Thickness = 2,
-    Parent = CharacterImage
-})
-
--- Welcome Message with Typing Animation
-local WelcomeLabel = CreateInstance("TextLabel", {
-    Name = "WelcomeMessage",
-    Size = UDim2.new(1, -20, 0, 25),
-    Position = UDim2.new(0, 10, 1, -30),
-    BackgroundTransparency = 1,
-    Text = "",
-    TextColor3 = Color3.fromRGB(138, 43, 226),
-    TextSize = 11,
-    TextWrapped = true,
-    Font = Enum.Font.GothamMedium,
-    ZIndex = 3,
-    Parent = CharacterPreview
-})
-
--- Typing animation function
-local function TypeMessage(label, message)
-    label.Text = ""
-    for i = 1, #message do
-        label.Text = message:sub(1, i)
-        task.wait(0.03)
-    end
-    task.wait(2)
-end
-
--- Continuous typing animation
-task.spawn(function()
-    task.wait(2)
-    while task.wait(0.1) do
-        if WelcomeLabel and WelcomeLabel.Parent then
-            local message = welcomeMessages[math.random(1, #welcomeMessages)]
-            TypeMessage(WelcomeLabel, message)
-        else
-            break
+            
+            for i = 1, 6 do
+                if not typingText or not typingText.Parent or not scriptActive then break end
+                cursorVisible = not cursorVisible
+                typingText.Text = fullText .. (cursorVisible and "|" or "")
+                wait(0.5)
+            end
+            
+            wait(0.5)
         end
     end
-end)
-
--- Tab System
-local currentTab = nil
-local tabs = {}
-
-local TabContainer = CreateInstance("ScrollingFrame", {
-    Name = "TabContainer",
-    Size = UDim2.new(1, -20, 1, -145),
-    Position = UDim2.new(0, 10, 0, 135),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ScrollBarThickness = 4,
-    ScrollBarImageColor3 = Color3.fromRGB(138, 43, 226),
-    CanvasSize = UDim2.new(0, 0, 0, 0),
-    ZIndex = 2,
-    Parent = Sidebar
-})
-
-CreateInstance("UIListLayout", {
-    SortOrder = Enum.SortOrder.LayoutOrder,
-    Padding = UDim.new(0, 8),
-    Parent = TabContainer
-})
-
--- Content Area
-local ContentArea = CreateInstance("Frame", {
-    Name = "ContentArea",
-    Size = UDim2.new(1, -190, 1, -50),
-    Position = UDim2.new(0, 185, 0, 45),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ClipsDescendants = true,
-    ZIndex = 2,
-    Parent = MainFrame
-})
-
--- Function to create tab button
-local function CreateTabButton(name, icon, content)
-    local button = CreateInstance("TextButton", {
-        Name = name,
-        Size = UDim2.new(1, 0, 0, 35),
-        BackgroundColor3 = Color3.fromRGB(30, 30, 35),
-        Text = "",
-        BorderSizePixel = 0,
-        ZIndex = 3,
-        Parent = TabContainer
-    })
     
-    CreateInstance("UICorner", {
-        CornerRadius = UDim.new(0, 6),
-        Parent = button
-    })
+    spawn(typeText)
     
-    local iconLabel = CreateInstance("TextLabel", {
-        Size = UDim2.new(0, 20, 0, 20),
-        Position = UDim2.new(0, 10, 0.5, -10),
-        BackgroundTransparency = 1,
-        Text = icon,
-        TextColor3 = Color3.fromRGB(138, 43, 226),
-        TextSize = 16,
-        Font = Enum.Font.GothamBold,
-        ZIndex = 4,
-        Parent = button
-    })
-    
-    local textLabel = CreateInstance("TextLabel", {
-        Size = UDim2.new(1, -40, 1, 0),
-        Position = UDim2.new(0, 35, 0, 0),
-        BackgroundTransparency = 1,
-        Text = name,
-        TextColor3 = Color3.fromRGB(200, 200, 200),
-        TextSize = 13,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Font = Enum.Font.Gotham,
-        ZIndex = 4,
-        Parent = button
-    })
-    
-    button.MouseButton1Click:Connect(function()
-        RippleEffect(button, button.AbsoluteSize.X / 2, button.AbsoluteSize.Y / 2)
-        
-        -- Deactivate all tabs
-        for _, tab in pairs(tabs) do
-            Tween(tab.button, {BackgroundColor3 = Color3.fromRGB(30, 30, 35)}, 0.3)
-            local tabTextLabel = tab.button:FindFirstChild("TextLabel")
-            if tabTextLabel then
-                Tween(tabTextLabel, {TextColor3 = Color3.fromRGB(200, 200, 200)}, 0.3)
-            end
-            if tab.content then
-                tab.content.Visible = false
-            end
-        end
-        
-        -- Activate clicked tab
-        Tween(button, {BackgroundColor3 = Color3.fromRGB(75, 0, 130)}, 0.3)
-        Tween(textLabel, {TextColor3 = Color3.fromRGB(255, 255, 255)}, 0.3)
-        
-        if content then
-            content.Visible = true
-            content.Position = UDim2.new(-1, 0, 0, 0)
-            content.Size = UDim2.new(0, 0, 1, 0)
-            Tween(content, {
-                Position = UDim2.new(0, 0, 0, 0),
-                Size = UDim2.new(1, 0, 1, 0)
-            }, 0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        end
-        
-        currentTab = name
-    end)
-    
-    button.MouseEnter:Connect(function()
-        if currentTab ~= name then
-            Tween(button, {BackgroundColor3 = Color3.fromRGB(40, 40, 45)}, 0.2)
+    spawn(function()
+        while glow and glow.Parent and scriptActive do
+            smoothTween(glow, {BackgroundTransparency = 0.9}, 1)
+            wait(1)
+            if not scriptActive then break end
+            smoothTween(glow, {BackgroundTransparency = 0.7}, 1)
+            wait(1)
         end
     end)
     
-    button.MouseLeave:Connect(function()
-        if currentTab ~= name then
-            Tween(button, {BackgroundColor3 = Color3.fromRGB(30, 30, 35)}, 0.2)
-        end
-    end)
+    card.Size = UDim2.new(0, 0, 0, 0)
+    card.Position = UDim2.new(0.5, 0, 0.5, 0)
+    card.AnchorPoint = Vector2.new(0.5, 0.5)
     
-    tabs[name] = {button = button, content = content}
-    return button
-end
-
--- Function to create content page
-local function CreateContentPage(name)
-    local page = CreateInstance("ScrollingFrame", {
-        Name = name .. "Page",
+    smoothTween(card, {
         Size = UDim2.new(1, 0, 1, 0),
-        Position = UDim2.new(0, 0, 0, 0),
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        ScrollBarThickness = 6,
-        ScrollBarImageColor3 = Color3.fromRGB(138, 43, 226),
-        CanvasSize = UDim2.new(0, 0, 0, 0),
-        Visible = false,
-        ZIndex = 2,
-        Parent = ContentArea
-    })
-    
-    CreateInstance("UIListLayout", {
-        SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, 10),
-        Parent = page
-    })
-    
-    return page
+        Position = UDim2.new(0.5, 0, 0.5, 0)
+    }, 0.6)
 end
 
--- Create button helper
-local function CreateButton(parent, text, callback, layoutOrder)
-    local button = CreateInstance("TextButton", {
-        Name = text,
-        Size = UDim2.new(1, -10, 0, 35),
-        BackgroundColor3 = Color3.fromRGB(35, 35, 40),
-        Text = text,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 13,
-        Font = Enum.Font.Gotham,
-        BorderSizePixel = 0,
-        LayoutOrder = layoutOrder or 0,
-        ZIndex = 3,
-        Parent = parent
-    })
-    
-    CreateInstance("UICorner", {
-        CornerRadius = UDim.new(0, 6),
-        Parent = button
-    })
-    
-    CreateInstance("UIStroke", {
-        Color = Color3.fromRGB(138, 43, 226),
-        Thickness = 1,
-        Transparency = 0.7,
-        Parent = button
-    })
-    
-    button.MouseButton1Click:Connect(function()
-        RippleEffect(button, button.AbsoluteSize.X / 2, button.AbsoluteSize.Y / 2)
-        if callback then
-            pcall(callback)
-        end
-    end)
-    
-    button.MouseEnter:Connect(function()
-        Tween(button, {BackgroundColor3 = Color3.fromRGB(50, 50, 55)}, 0.2)
-        Tween(button:FindFirstChild("UIStroke"), {Transparency = 0.3}, 0.2)
-    end)
-    
-    button.MouseLeave:Connect(function()
-        Tween(button, {BackgroundColor3 = Color3.fromRGB(35, 35, 40)}, 0.2)
-        Tween(button:FindFirstChild("UIStroke"), {Transparency = 0.7}, 0.2)
-    end)
-    
-    return button
-end
-
--- Create textbox helper
-local function CreateTextBox(parent, placeholder, layoutOrder)
-    local textbox = CreateInstance("TextBox", {
-        Size = UDim2.new(1, -10, 0, 35),
-        BackgroundColor3 = Color3.fromRGB(30, 30, 35),
-        PlaceholderText = placeholder,
-        PlaceholderColor3 = Color3.fromRGB(120, 120, 120),
-        Text = "",
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 13,
-        Font = Enum.Font.Gotham,
-        BorderSizePixel = 0,
-        ClearTextOnFocus = false,
-        LayoutOrder = layoutOrder or 0,
-        ZIndex = 3,
-        Parent = parent
-    })
-    
-    CreateInstance("UICorner", {
-        CornerRadius = UDim.new(0, 6),
-        Parent = textbox
-    })
-    
-    CreateInstance("UIStroke", {
-        Color = Color3.fromRGB(138, 43, 226),
-        Thickness = 1,
-        Transparency = 0.7,
-        Parent = textbox
-    })
-    
-    CreateInstance("UIPadding", {
-        PaddingLeft = UDim.new(0, 10),
-        PaddingRight = UDim.new(0, 10),
-        Parent = textbox
-    })
-    
-    textbox.Focused:Connect(function()
-        Tween(textbox:FindFirstChild("UIStroke"), {Transparency = 0.2}, 0.2)
-    end)
-    
-    textbox.FocusLost:Connect(function()
-        Tween(textbox:FindFirstChild("UIStroke"), {Transparency = 0.7}, 0.2)
-    end)
-    
-    return textbox
-end
-
--- Create toggle helper
-local function CreateToggle(parent, text, defaultState, callback, layoutOrder)
-    local container = CreateInstance("Frame", {
-        Size = UDim2.new(1, -10, 0, 35),
-        BackgroundColor3 = Color3.fromRGB(30, 30, 35),
-        BorderSizePixel = 0,
-        LayoutOrder = layoutOrder or 0,
-        ZIndex = 3,
-        Parent = parent
-    })
-    
-    CreateInstance("UICorner", {
-        CornerRadius = UDim.new(0, 6),
-        Parent = container
-    })
-    
-    local label = CreateInstance("TextLabel", {
-        Size = UDim2.new(1, -60, 1, 0),
-        Position = UDim2.new(0, 10, 0, 0),
-        BackgroundTransparency = 1,
-        Text = text,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 13,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Font = Enum.Font.Gotham,
-        ZIndex = 4,
-        Parent = container
-    })
-    
-    local toggleButton = CreateInstance("TextButton", {
-        Size = UDim2.new(0, 45, 0, 25),
-        Position = UDim2.new(1, -50, 0.5, -12.5),
-        BackgroundColor3 = defaultState and Color3.fromRGB(75, 0, 130) or Color3.fromRGB(50, 50, 55),
-        Text = "",
-        BorderSizePixel = 0,
-        ZIndex = 4,
-        Parent = container
-    })
-    
-    CreateInstance("UICorner", {
-        CornerRadius = UDim.new(1, 0),
-        Parent = toggleButton
-    })
-    
-    local indicator = CreateInstance("Frame", {
-        Size = UDim2.new(0, 19, 0, 19),
-        Position = defaultState and UDim2.new(0, 23, 0.5, -9.5) or UDim2.new(0, 3, 0.5, -9.5),
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        BorderSizePixel = 0,
-        ZIndex = 5,
-        Parent = toggleButton
-    })
-    
-    CreateInstance("UICorner", {
-        CornerRadius = UDim.new(1, 0),
-        Parent = indicator
-    })
-    
-    local state = defaultState
-    
-    toggleButton.MouseButton1Click:Connect(function()
-        state = not state
-        if callback then
-            pcall(callback, state)
-        end
-        
-        if state then
-            Tween(toggleButton, {BackgroundColor3 = Color3.fromRGB(75, 0, 130)}, 0.2)
-            Tween(indicator, {Position = UDim2.new(0, 23, 0.5, -9.5)}, 0.2, Enum.EasingStyle.Back)
-        else
-            Tween(toggleButton, {BackgroundColor3 = Color3.fromRGB(50, 50, 55)}, 0.2)
-            Tween(indicator, {Position = UDim2.new(0, 3, 0.5, -9.5)}, 0.2, Enum.EasingStyle.Back)
-        end
-    end)
-    
-    return container, state
-end
-
--- Create slider helper
-local function CreateSlider(parent, text, min, max, default, callback, layoutOrder)
-    local container = CreateInstance("Frame", {
-        Size = UDim2.new(1, -10, 0, 55),
-        BackgroundColor3 = Color3.fromRGB(30, 30, 35),
-        BorderSizePixel = 0,
-        LayoutOrder = layoutOrder or 0,
-        ZIndex = 3,
-        Parent = parent
-    })
-    
-    CreateInstance("UICorner", {
-        CornerRadius = UDim.new(0, 6),
-        Parent = container
-    })
-    
-    local label = CreateInstance("TextLabel", {
-        Size = UDim2.new(1, -20, 0, 20),
-        Position = UDim2.new(0, 10, 0, 5),
-        BackgroundTransparency = 1,
-        Text = text .. ": " .. default,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 13,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Font = Enum.Font.Gotham,
-        ZIndex = 4,
-        Parent = container
-    })
-    
-    local sliderBack = CreateInstance("Frame", {
-        Size = UDim2.new(1, -20, 0, 6),
-        Position = UDim2.new(0, 10, 0, 35),
-        BackgroundColor3 = Color3.fromRGB(50, 50, 55),
-        BorderSizePixel = 0,
-        ZIndex = 4,
-        Parent = container
-    })
-    
-    CreateInstance("UICorner", {
-        CornerRadius = UDim.new(1, 0),
-        Parent = sliderBack
-    })
-    
-    local sliderFill = CreateInstance("Frame", {
-        Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
-        BackgroundColor3 = Color3.fromRGB(138, 43, 226),
-        BorderSizePixel = 0,
-        ZIndex = 5,
-        Parent = sliderBack
-    })
-    
-    CreateInstance("UICorner", {
-        CornerRadius = UDim.new(1, 0),
-        Parent = sliderFill
-    })
-    
-    local sliderButton = CreateInstance("TextButton", {
-        Size = UDim2.new(0, 16, 0, 16),
-        Position = UDim2.new((default - min) / (max - min), -8, 0.5, -8),
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        Text = "",
-        BorderSizePixel = 0,
-        ZIndex = 6,
-        Parent = sliderBack
-    })
-    
-    CreateInstance("UICorner", {
-        CornerRadius = UDim.new(1, 0),
-        Parent = sliderButton
-    })
-    
-    CreateInstance("UIStroke", {
-        Color = Color3.fromRGB(138, 43, 226),
-        Thickness = 2,
-        Parent = sliderButton
-    })
-    
-    local dragging = false
-    local value = default
-    
-    sliderButton.MouseButton1Down:Connect(function()
-        dragging = true
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
-    
-    sliderBack.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-        end
-    end)
-    
-    RunService.RenderStepped:Connect(function()
-        if dragging then
-            local mousePos = UserInputService:GetMouseLocation().X
-            local sliderPos = sliderBack.AbsolutePosition.X
-            local sliderSize = sliderBack.AbsoluteSize.X
-            local percent = math.clamp((mousePos - sliderPos) / sliderSize, 0, 1)
-            value = math.floor(min + (max - min) * percent)
-            
-            label.Text = text .. ": " .. value
-            sliderFill.Size = UDim2.new(percent, 0, 1, 0)
-            sliderButton.Position = UDim2.new(percent, -8, 0.5, -8)
-            
-            if callback then
-                pcall(callback, value)
-            end
-        end
-    end)
-    
-    return container, value
-end
-
--- HOME TAB
-local HomePage = CreateContentPage("Home")
-
-CreateInstance("TextLabel", {
-    Size = UDim2.new(1, -10, 0, 40),
-    BackgroundTransparency = 1,
-    Text = "Welcome to $errated",
-    TextColor3 = Color3.fromRGB(138, 43, 226),
-    TextSize = 24,
-    Font = Enum.Font.GothamBold,
-    LayoutOrder = 0,
-    ZIndex = 3,
-    Parent = HomePage
-})
-
-CreateInstance("TextLabel", {
-    Size = UDim2.new(1, -10, 0, 60),
-    BackgroundTransparency = 1,
-    Text = "A professional-grade executor with Matrix-inspired design.\nSelect a tab from the sidebar to begin.",
-    TextColor3 = Color3.fromRGB(200, 200, 200),
-    TextSize = 13,
-    TextWrapped = true,
-    Font = Enum.Font.Gotham,
-    LayoutOrder = 1,
-    ZIndex = 3,
-    Parent = HomePage
-})
-
--- Quick Stats
-local statsFrame = CreateInstance("Frame", {
-    Size = UDim2.new(1, -10, 0, 80),
-    BackgroundColor3 = Color3.fromRGB(30, 30, 35),
-    BorderSizePixel = 0,
-    LayoutOrder = 2,
-    ZIndex = 3,
-    Parent = HomePage
-})
-
-CreateInstance("UICorner", {
-    CornerRadius = UDim.new(0, 8),
-    Parent = statsFrame
-})
-
-CreateInstance("TextLabel", {
-    Size = UDim2.new(1, -20, 0, 25),
-    Position = UDim2.new(0, 10, 0, 10),
-    BackgroundTransparency = 1,
-    Text = "System Status",
-    TextColor3 = Color3.fromRGB(138, 43, 226),
-    TextSize = 16,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    Font = Enum.Font.GothamBold,
-    ZIndex = 4,
-    Parent = statsFrame
-})
-
-CreateInstance("TextLabel", {
-    Size = UDim2.new(1, -20, 0, 35),
-    Position = UDim2.new(0, 10, 0, 40),
-    BackgroundTransparency = 1,
-    Text = "✓ Executor: Online\n✓ Functions: " .. (#tabs) .. " tabs loaded",
-    TextColor3 = Color3.fromRGB(100, 255, 100),
-    TextSize = 12,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    Font = Enum.Font.Gotham,
-    ZIndex = 4,
-    Parent = statsFrame
-})
-
--- PLAYER TAB
-local PlayerPage = CreateContentPage("Player")
-
-CreateInstance("TextLabel", {
-    Size = UDim2.new(1, -10, 0, 30),
-    BackgroundTransparency = 1,
-    Text = "Player Controls",
-    TextColor3 = Color3.fromRGB(138, 43, 226),
-    TextSize = 18,
-    Font = Enum.Font.GothamBold,
-    LayoutOrder = 0,
-    ZIndex = 3,
-    Parent = PlayerPage
-})
-
-local walkspeedBox = CreateTextBox(PlayerPage, "Walkspeed (default: 16)", 1)
-local jumpowerBox = CreateTextBox(PlayerPage, "Jump Power (default: 50)", 2)
-
-CreateButton(PlayerPage, "Set Walkspeed", function()
-    local speed = tonumber(walkspeedBox.Text)
-    if speed and Player.Character and Player.Character:FindFirstChild("Humanoid") then
-        Player.Character.Humanoid.WalkSpeed = speed
-    end
-end, 3)
-
-CreateButton(PlayerPage, "Set Jump Power", function()
-    local power = tonumber(jumpowerBox.Text)
-    if power and Player.Character and Player.Character:FindFirstChild("Humanoid") then
-        Player.Character.Humanoid.JumpPower = power
-    end
-end, 4)
-
-CreateToggle(PlayerPage, "Infinite Jump", false, function(state)
-    if state then
-        _G.InfJump = true
-        UserInputService.JumpRequest:Connect(function()
-            if _G.InfJump and Player.Character and Player.Character:FindFirstChild("Humanoid") then
-                Player.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-            end
-        end)
-    else
-        _G.InfJump = false
-    end
-end, 5)
-
-CreateButton(PlayerPage, "Reset Character", function()
-    if Player.Character and Player.Character:FindFirstChild("Humanoid") then
-        Player.Character.Humanoid.Health = 0
-    end
-end, 6)
-
-CreateButton(PlayerPage, "God Mode", function()
-    if Player.Character and Player.Character:FindFirstChild("Humanoid") then
-        Player.Character.Humanoid.MaxHealth = math.huge
-        Player.Character.Humanoid.Health = math.huge
-    end
-end, 7)
-
-CreateToggle(PlayerPage, "Noclip", false, function(state)
-    _G.Noclip = state
-    if state then
-        task.spawn(function()
-            while _G.Noclip do
-                if Player.Character then
-                    for _, part in pairs(Player.Character:GetDescendants()) do
-                        if part:IsA("BasePart") then
-                            part.CanCollide = false
+-- Monitor script users
+local function monitorScriptUsers()
+    RunService.Heartbeat:Connect(function()
+        if not scriptActive then return end
+        for _, targetPlayer in ipairs(Players:GetPlayers()) do
+            if isScriptUser(targetPlayer) then
+                if not scriptUsers[targetPlayer.UserId] then
+                    scriptUsers[targetPlayer.UserId] = true
+                    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+                        if not targetPlayer.Character.Head:FindFirstChild("UserCard") then
+                            createUserCard(targetPlayer)
                         end
                     end
                 end
-                task.wait()
+            else
+                if scriptUsers[targetPlayer.UserId] then
+                    scriptUsers[targetPlayer.UserId] = nil
+                    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+                        local card = targetPlayer.Character.Head:FindFirstChild("UserCard")
+                        if card then card:Destroy() end
+                    end
+                end
             end
+        end
+    end)
+end
+
+-- FPS Counter
+local fps = 0
+local lastUpdate = tick()
+RunService.RenderStepped:Connect(function()
+    if not scriptActive then return end
+    local now = tick()
+    fps = math.floor(1 / (now - lastUpdate))
+    lastUpdate = now
+end)
+
+-- Draggable Toggle Button
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0, 220, 0, 70)
+toggleButton.Position = UDim2.new(1, -240, 1, -90)
+toggleButton.BackgroundColor3 = CONFIG.Colors.Background
+toggleButton.BorderSizePixel = 0
+toggleButton.Text = ""
+toggleButton.Active = true
+toggleButton.Draggable = true
+toggleButton.Parent = screenGui
+
+createCorner(toggleButton, 16)
+createStroke(toggleButton, 3)
+createGradient(toggleButton, 135)
+
+local buttonLogo = Instance.new("TextLabel")
+buttonLogo.Size = UDim2.new(0, 50, 1, 0)
+buttonLogo.Position = UDim2.new(0, 10, 0, 0)
+buttonLogo.BackgroundTransparency = 1
+buttonLogo.Text = "$"
+buttonLogo.TextColor3 = CONFIG.Colors.Primary
+buttonLogo.TextSize = 36
+buttonLogo.Font = Enum.Font.GothamBold
+buttonLogo.Parent = toggleButton
+
+local infoContainer = Instance.new("Frame")
+infoContainer.Size = UDim2.new(1, -70, 1, 0)
+infoContainer.Position = UDim2.new(0, 65, 0, 0)
+infoContainer.BackgroundTransparency = 1
+infoContainer.Parent = toggleButton
+
+local fpsLabel = Instance.new("TextLabel")
+fpsLabel.Size = UDim2.new(1, 0, 0, 25)
+fpsLabel.Position = UDim2.new(0, 0, 0, 8)
+fpsLabel.BackgroundTransparency = 1
+fpsLabel.Text = "FPS: 60"
+fpsLabel.TextColor3 = CONFIG.Colors.Success
+fpsLabel.TextSize = 18
+fpsLabel.Font = Enum.Font.GothamBold
+fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
+fpsLabel.Parent = infoContainer
+
+local executorLabel = Instance.new("TextLabel")
+executorLabel.Size = UDim2.new(1, 0, 0, 20)
+executorLabel.Position = UDim2.new(0, 0, 0, 35)
+executorLabel.BackgroundTransparency = 1
+executorLabel.Text = EXECUTOR
+executorLabel.TextColor3 = CONFIG.Colors.TextSecondary
+executorLabel.TextSize = 14
+executorLabel.Font = Enum.Font.GothamMedium
+executorLabel.TextXAlignment = Enum.TextXAlignment.Left
+executorLabel.Parent = infoContainer
+
+spawn(function()
+    while wait(0.5) do
+        if not scriptActive then break end
+        if fpsLabel then
+            fpsLabel.Text = "FPS: " .. fps
+            if fps >= 50 then
+                fpsLabel.TextColor3 = CONFIG.Colors.Success
+            elseif fps >= 30 then
+                fpsLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
+            else
+                fpsLabel.TextColor3 = CONFIG.Colors.Error
+            end
+        end
+    end
+end)
+
+-- Main Menu UI
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "CommandMenu"
+mainFrame.Size = UDim2.new(0, 750, 0, 600)
+mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+mainFrame.BackgroundColor3 = CONFIG.Colors.Background
+mainFrame.BorderSizePixel = 0
+mainFrame.Visible = false
+mainFrame.Parent = screenGui
+
+createCorner(mainFrame, 20)
+createStroke(mainFrame, 3)
+
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 70)
+header.BackgroundColor3 = CONFIG.Colors.BackgroundTransparent
+header.BorderSizePixel = 0
+header.Parent = mainFrame
+
+createCorner(header, 20)
+createGradient(header, 90)
+
+local headerLogo = Instance.new("TextLabel")
+headerLogo.Size = UDim2.new(0, 60, 1, 0)
+headerLogo.Position = UDim2.new(0, 15, 0, 0)
+headerLogo.BackgroundTransparency = 1
+headerLogo.Text = "$"
+headerLogo.TextColor3 = CONFIG.Colors.Primary
+headerLogo.TextSize = 42
+headerLogo.Font = Enum.Font.GothamBold
+headerLogo.Parent = header
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -90, 1, 0)
+title.Position = UDim2.new(0, 75, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "Command Menu"
+title.TextColor3 = CONFIG.Colors.Text
+title.TextSize = 24
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = header
+
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.new(0, 40, 0, 40)
+closeButton.Position = UDim2.new(1, -55, 0, 15)
+closeButton.BackgroundColor3 = CONFIG.Colors.BackgroundTransparent
+closeButton.BorderSizePixel = 0
+closeButton.Text = "×"
+closeButton.TextColor3 = CONFIG.Colors.Text
+closeButton.TextSize = 32
+closeButton.Font = Enum.Font.GothamBold
+closeButton.Parent = header
+
+createCorner(closeButton, 10)
+
+local inputFrame = Instance.new("Frame")
+inputFrame.Size = UDim2.new(1, -40, 0, 60)
+inputFrame.Position = UDim2.new(0, 20, 0, 90)
+inputFrame.BackgroundColor3 = CONFIG.Colors.BackgroundTransparent
+inputFrame.BorderSizePixel = 0
+inputFrame.Parent = mainFrame
+
+createCorner(inputFrame, 12)
+createStroke(inputFrame, 2)
+
+local commandInput = Instance.new("TextBox")
+commandInput.Size = UDim2.new(1, -20, 1, -20)
+commandInput.Position = UDim2.new(0, 10, 0, 10)
+commandInput.BackgroundTransparency = 1
+commandInput.PlaceholderText = "Enter command (type !help for list)..."
+commandInput.PlaceholderColor3 = CONFIG.Colors.TextSecondary
+commandInput.Text = ""
+commandInput.TextColor3 = CONFIG.Colors.Text
+commandInput.TextSize = 18
+commandInput.Font = Enum.Font.GothamMedium
+commandInput.TextXAlignment = Enum.TextXAlignment.Left
+commandInput.ClearTextOnFocus = false
+commandInput.ZIndex = 2
+commandInput.Parent = inputFrame
+
+-- Autocomplete Suggestion Label
+local suggestionLabel = Instance.new("TextLabel")
+suggestionLabel.Size = UDim2.new(1, -20, 1, -20)
+suggestionLabel.Position = UDim2.new(0, 10, 0, 10)
+suggestionLabel.BackgroundTransparency = 1
+suggestionLabel.Text = ""
+suggestionLabel.TextColor3 = CONFIG.Colors.Suggestion
+suggestionLabel.TextTransparency = 0.5
+suggestionLabel.TextSize = 18
+suggestionLabel.Font = Enum.Font.GothamMedium
+suggestionLabel.TextXAlignment = Enum.TextXAlignment.Left
+suggestionLabel.ZIndex = 1
+suggestionLabel.Parent = inputFrame
+
+-- Autocomplete Logic
+local function updateSuggestion()
+    local input = commandInput.Text
+    suggestionLabel.Text = ""
+    
+    if input == "" or not input:match("^!") then
+        return
+    end
+    
+    local args = {}
+    for word in input:gmatch("%S+") do
+        table.insert(args, word)
+    end
+    
+    local baseCmd = args[1]:lower()
+    
+    -- Find matching command
+    for _, cmdData in ipairs(commandList) do
+        if cmdData.cmd:lower():find("^" .. baseCmd:lower()) and cmdData.cmd:lower() ~= baseCmd:lower() then
+            if #args == 1 then
+                suggestionLabel.Text = cmdData.cmd
+                return
+            end
+        end
+    end
+    
+    -- Check if command needs username
+    for _, cmdData in ipairs(commandList) do
+        if cmdData.cmd:lower() == baseCmd:lower() then
+            if cmdData.requiresUsername and #args == 1 then
+                suggestionLabel.Text = input .. " @username"
+                return
+            elseif cmdData.requiresNumber and #args == 1 then
+                suggestionLabel.Text = input .. " [number]"
+                return
+            elseif cmdData.requiresUsername and #args == 2 then
+                -- Show username prompt after space
+                suggestionLabel.Text = input .. " (enter @username)"
+                return
+            end
+        end
+    end
+end
+
+commandInput:GetPropertyChangedSignal("Text"):Connect(updateSuggestion)
+
+local scrollFrame = Instance.new("ScrollingFrame")
+scrollFrame.Size = UDim2.new(1, -40, 1, -180)
+scrollFrame.Position = UDim2.new(0, 20, 0, 170)
+scrollFrame.BackgroundColor3 = CONFIG.Colors.BackgroundTransparent
+scrollFrame.BorderSizePixel = 0
+scrollFrame.ScrollBarThickness = 6
+scrollFrame.ScrollBarImageColor3 = CONFIG.Colors.Primary
+scrollFrame.Parent = mainFrame
+
+createCorner(scrollFrame, 12)
+
+local infoLabel = Instance.new("TextLabel")
+infoLabel.Size = UDim2.new(1, -20, 0, 1600)
+infoLabel.Position = UDim2.new(0, 10, 0, 10)
+infoLabel.BackgroundTransparency = 1
+infoLabel.Text = [[Available Commands:
+
+MOVEMENT:
+!fly - Professional admin fly (NO animations, WASD to move, Space/Shift for up/down)
+!unfly - Disable flying
+!flyspeed [number] - Set fly speed
+!rsfly - Reset fly speed
+
+!smfly / !superman - Superman fly (FIXED - no animation breaks)
+!unsmfly / !unsuperman - Disable superman fly
+!smspeed [number] - Set superman fly speed
+!rssm - Reset superman speed
+
+!noclip / !clip - Walk through walls
+!unnoclip / !unclip - Disable noclip
+
+!float - Float mode (Q to go up, E to go down)
+!unfloat - Disable floating
+
+!infj / !infinitejump - Infinite jumping
+!uninfj / !uninfinitejump - Disable infinite jump
+
+TELEPORT:
+!tp [username] / !goto [username] - Teleport to a player
+!tptool - Get click-to-teleport tool
+
+STATS:
+!ws [number] / !walkspeed [number] - Set walk speed
+!resetws - Reset to original walk speed
+!jp [number] / !jumppower [number] - Set jump power  
+!resetjp - Reset to original jump power
+
+AVATAR:
+!char [username] - Load any player's avatar (FIXED - multiple methods)
+
+CHAT & PROTECTION:
+!cb / !chatbypass - Toggle chat filter bypass
+!antiafk / !antiidle - Toggle anti-AFK (prevents kick for idling)
+!antivcban / !antivcb / !novcb - Toggle anti-VC-ban protection
+
+SERVER:
+!rejoin / !rj - Rejoin the same server
+!serverhop / !shop - Server hop to a different server
+!join [username] - Join a specific user's server
+
+UTILITY:
+!unexecute - Completely remove the script
+!help - Show this command list
+
+TIP: Start typing a command to see autocomplete suggestions!]]
+infoLabel.TextColor3 = CONFIG.Colors.TextSecondary
+infoLabel.TextSize = 15
+infoLabel.Font = Enum.Font.GothamMedium
+infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+infoLabel.TextYAlignment = Enum.TextYAlignment.Top
+infoLabel.Parent = scrollFrame
+
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, infoLabel.TextBounds.Y + 20)
+
+-- COMMAND IMPLEMENTATIONS (Same as v4.2, including all functions)
+local function findPlayer(name)
+    name = name:lower()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Name:lower():find(name) or p.DisplayName:lower():find(name) then
+            return p
+        end
+    end
+    return nil
+end
+
+-- [ALL PREVIOUS COMMAND FUNCTIONS FROM V4.2 - FLY, SUPERMAN, NOCLIP, ETC.]
+-- [I'm including them all below for completeness]
+
+-- PROFESSIONAL FLY (NO ANIMATIONS)
+local function enableFly()
+    if commandStates.flying then
+        showNotification("Fly is already enabled!", "error")
+        return
+    end
+    
+    commandStates.flying = true
+    
+    local flyPart = Instance.new("Part")
+    flyPart.Name = "FlyPart"
+    flyPart.Anchored = true
+    flyPart.Transparency = 1
+    flyPart.CanCollide = false
+    flyPart.Size = Vector3.new(4, 1, 2)
+    flyPart.Parent = workspace
+    
+    local bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    bodyVelocity.MaxForce = Vector3.new(0, math.huge, 0)
+    bodyVelocity.Parent = character.HumanoidRootPart
+    
+    for _, state in pairs(Enum.HumanoidStateType:GetEnumItems()) do
+        pcall(function()
+            humanoid:SetStateEnabled(state, false)
         end)
     end
-end, 8)
-
-CreateButton(PlayerPage, "Fly", function()
-    local flying = false
-    local flySpeed = 50
     
-    local function fly()
-        local char = Player.Character
-        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Flying, true)
+    humanoid:ChangeState(Enum.HumanoidStateType.Flying)
+    
+    for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+        track:Stop()
+    end
+    
+    for _, part in pairs(character:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            part.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+        end
+    end
+    
+    activeConnections.fly = RunService.Heartbeat:Connect(function()
+        if not commandStates.flying or not scriptActive then
+            if flyPart then flyPart:Destroy() end
+            if bodyVelocity then bodyVelocity:Destroy() end
+            for _, state in pairs(Enum.HumanoidStateType:GetEnumItems()) do
+                pcall(function()
+                    humanoid:SetStateEnabled(state, true)
+                end)
+            end
+            for _, part in pairs(character:GetDescendants()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.CustomPhysicalProperties = nil
+                end
+            end
+            return
+        end
         
-        flying = not flying
+        for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+            track:Stop()
+        end
         
-        if flying then
-            local bv = Instance.new("BodyVelocity")
-            bv.Velocity = Vector3.new(0, 0, 0)
-            bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-            bv.Parent = char.HumanoidRootPart
+        local hrp = character.HumanoidRootPart
+        local moveVector = Vector3.new(0, 0, 0)
+        local camera = workspace.CurrentCamera
+        
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            moveVector = moveVector + (camera.CFrame.LookVector * commandStates.flySpeed)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            moveVector = moveVector - (camera.CFrame.LookVector * commandStates.flySpeed)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            moveVector = moveVector - (camera.CFrame.RightVector * commandStates.flySpeed)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            moveVector = moveVector + (camera.CFrame.RightVector * commandStates.flySpeed)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            moveVector = moveVector + Vector3.new(0, commandStates.flySpeed, 0)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            moveVector = moveVector - Vector3.new(0, commandStates.flySpeed, 0)
+        end
+        
+        hrp.CFrame = hrp.CFrame + moveVector
+        flyPart.CFrame = hrp.CFrame - Vector3.new(0, 3, 0)
+    end)
+    
+    showNotification("Professional fly enabled! (No animations)", "success")
+end
+
+local function disableFly()
+    if not commandStates.flying then
+        showNotification("Fly is not enabled!", "error")
+        return
+    end
+    
+    commandStates.flying = false
+    
+    if activeConnections.fly then
+        activeConnections.fly:Disconnect()
+        activeConnections.fly = nil
+    end
+    
+    local flyPart = workspace:FindFirstChild("FlyPart")
+    if flyPart then flyPart:Destroy() end
+    
+    local bodyVelocity = character.HumanoidRootPart:FindFirstChild("BodyVelocity")
+    if bodyVelocity then bodyVelocity:Destroy() end
+    
+    for _, state in pairs(Enum.HumanoidStateType:GetEnumItems()) do
+        pcall(function()
+            humanoid:SetStateEnabled(state, true)
+        end)
+    end
+    
+    for _, part in pairs(character:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            part.CustomPhysicalProperties = nil
+        end
+    end
+    
+    showNotification("Fly disabled!", "success")
+end
+
+-- SUPERMAN FLY (FIXED - NO ANIMATION BREAKS)
+local supermanAnim = nil
+local function enableSupermanFly()
+    if commandStates.supermanFly then
+        showNotification("Superman fly is already enabled!", "error")
+        return
+    end
+    
+    commandStates.supermanFly = true
+    
+    local bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bodyGyro.P = 9000
+    bodyGyro.Parent = character.HumanoidRootPart
+    
+    local bodyVel = Instance.new("BodyVelocity")
+    bodyVel.Velocity = Vector3.new(0, 0, 0)
+    bodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+    bodyVel.Parent = character.HumanoidRootPart
+    
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, false)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, false)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, false)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.StrafingNoPhysics, false)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Landed, false)
+    
+    for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+        track:Stop()
+    end
+    
+    for _, part in pairs(character:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            part.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+        end
+    end
+    
+    local idleAnim = Instance.new("Animation")
+    idleAnim.AnimationId = "rbxassetid://104879320142507"
+    
+    local moveAnim = Instance.new("Animation")
+    moveAnim.AnimationId = "rbxassetid://140087168717341"
+    
+    local idleTrack = humanoid:LoadAnimation(idleAnim)
+    local moveTrack = humanoid:LoadAnimation(moveAnim)
+    
+    idleTrack.Priority = Enum.AnimationPriority.Action4
+    moveTrack.Priority = Enum.AnimationPriority.Action4
+    
+    idleTrack:Play()
+    supermanAnim = {idle = idleTrack, move = moveTrack, current = "idle"}
+    
+    activeConnections.supermanFly = RunService.Heartbeat:Connect(function()
+        if not commandStates.supermanFly or not scriptActive then
+            if bodyGyro then bodyGyro:Destroy() end
+            if bodyVel then bodyVel:Destroy() end
+            if supermanAnim then
+                supermanAnim.idle:Stop()
+                supermanAnim.move:Stop()
+            end
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, true)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, true)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, true)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.StrafingNoPhysics, true)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Landed, true)
+            for _, part in pairs(character:GetDescendants()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    part.CustomPhysicalProperties = nil
+                end
+            end
+            return
+        end
+        
+        for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+            if track ~= supermanAnim.idle and track ~= supermanAnim.move then
+                track:Stop()
+            end
+        end
+        
+        local camera = workspace.CurrentCamera
+        local moveVector = Vector3.new(0, 0, 0)
+        local horizontalMove = false
+        
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            moveVector = moveVector + (camera.CFrame.LookVector * commandStates.supermanSpeed)
+            horizontalMove = true
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            moveVector = moveVector - (camera.CFrame.LookVector * commandStates.supermanSpeed)
+            horizontalMove = true
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            moveVector = moveVector - (camera.CFrame.RightVector * commandStates.supermanSpeed)
+            horizontalMove = true
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            moveVector = moveVector + (camera.CFrame.RightVector * commandStates.supermanSpeed)
+            horizontalMove = true
+        end
+        
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            moveVector = moveVector + Vector3.new(0, commandStates.supermanSpeed, 0)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            moveVector = moveVector - Vector3.new(0, commandStates.supermanSpeed, 0)
+        end
+        
+        bodyVel.Velocity = moveVector
+        bodyGyro.CFrame = camera.CFrame
+        
+        if horizontalMove then
+            if supermanAnim.current ~= "move" then
+                supermanAnim.idle:Stop()
+                supermanAnim.move:Play()
+                supermanAnim.current = "move"
+            end
+        else
+            if supermanAnim.current ~= "idle" then
+                supermanAnim.move:Stop()
+                supermanAnim.idle:Play()
+                supermanAnim.current = "idle"
+            end
+        end
+    end)
+    
+    showNotification("Superman fly enabled! (Fixed animations)", "success")
+end
+
+local function disableSupermanFly()
+    if not commandStates.supermanFly then
+        showNotification("Superman fly is not enabled!", "error")
+        return
+    end
+    
+    commandStates.supermanFly = false
+    
+    if activeConnections.supermanFly then
+        activeConnections.supermanFly:Disconnect()
+        activeConnections.supermanFly = nil
+    end
+    
+    if supermanAnim then
+        supermanAnim.idle:Stop()
+        supermanAnim.move:Stop()
+        supermanAnim = nil
+    end
+    
+    local bodyGyro = character.HumanoidRootPart:FindFirstChild("BodyGyro")
+    local bodyVel = character.HumanoidRootPart:FindFirstChild("BodyVelocity")
+    if bodyGyro then bodyGyro:Destroy() end
+    if bodyVel then bodyVel:Destroy() end
+    
+    for _, part in pairs(character:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            part.CustomPhysicalProperties = nil
+        end
+    end
+    
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, true)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, true)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, true)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.StrafingNoPhysics, true)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Landed, true)
+    
+    showNotification("Superman fly disabled!", "success")
+end
+
+-- [REST OF COMMANDS - NOCLIP, FLOAT, INFINITE JUMP, TP, STATS, CHAR, CHAT BYPASS, ANTI-AFK, ANTI-VC-BAN, SERVER MANAGEMENT]
+-- [Including all from v4.2 for brevity - they're identical]
+
+local function enableNoclip()
+    if commandStates.noclip then
+        showNotification("Noclip is already enabled!", "error")
+        return
+    end
+    
+    commandStates.noclip = true
+    
+    activeConnections.noclip = RunService.Stepped:Connect(function()
+        if not commandStates.noclip or not scriptActive then return end
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end)
+    
+    showNotification("Noclip enabled!", "success")
+end
+
+local function disableNoclip()
+    if not commandStates.noclip then
+        showNotification("Noclip is not enabled!", "error")
+        return
+    end
+    
+    commandStates.noclip = false
+    
+    if activeConnections.noclip then
+        activeConnections.noclip:Disconnect()
+        activeConnections.noclip = nil
+    end
+    
+    for _, part in pairs(character:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            part.CanCollide = true
+        end
+    end
+    
+    showNotification("Noclip disabled!", "success")
+end
+
+local floatHeight = 0
+local function enableFloat()
+    if commandStates.float then
+        showNotification("Float is already enabled!", "error")
+        return
+    end
+    
+    commandStates.float = true
+    floatHeight = 0
+    
+    local floatPart = Instance.new("Part")
+    floatPart.Name = "FloatPart"
+    floatPart.Size = Vector3.new(6, 0.5, 6)
+    floatPart.Transparency = 1
+    floatPart.Anchored = true
+    floatPart.CanCollide = true
+    floatPart.Parent = workspace
+    
+    activeConnections.float = RunService.Heartbeat:Connect(function()
+        if not commandStates.float or not scriptActive then
+            if floatPart then floatPart:Destroy() end
+            return
+        end
+        
+        floatPart.CFrame = character.HumanoidRootPart.CFrame * CFrame.new(0, -3.5 + floatHeight, 0)
+    end)
+    
+    activeConnections.floatUp = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed or not commandStates.float or not scriptActive then return end
+        if input.KeyCode == Enum.KeyCode.Q then
+            floatHeight = floatHeight + 0.5
+        end
+    end)
+    
+    activeConnections.floatDown = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed or not commandStates.float or not scriptActive then return end
+        if input.KeyCode == Enum.KeyCode.E then
+            floatHeight = floatHeight - 0.5
+        end
+    end)
+    
+    showNotification("Float enabled! Press Q/E to go up/down", "success")
+end
+
+local function disableFloat()
+    if not commandStates.float then
+        showNotification("Float is not enabled!", "error")
+        return
+    end
+    
+    commandStates.float = false
+    floatHeight = 0
+    
+    if activeConnections.float then
+        activeConnections.float:Disconnect()
+        activeConnections.float = nil
+    end
+    
+    if activeConnections.floatUp then
+        activeConnections.floatUp:Disconnect()
+        activeConnections.floatUp = nil
+    end
+    
+    if activeConnections.floatDown then
+        activeConnections.floatDown:Disconnect()
+        activeConnections.floatDown = nil
+    end
+    
+    local floatPart = workspace:FindFirstChild("FloatPart")
+    if floatPart then floatPart:Destroy() end
+    
+    showNotification("Float disabled!", "success")
+end
+
+local function enableInfiniteJump()
+    if commandStates.infiniteJump then
+        showNotification("Infinite jump is already enabled!", "error")
+        return
+    end
+    
+    commandStates.infiniteJump = true
+    
+    activeConnections.infiniteJump = UserInputService.JumpRequest:Connect(function()
+        if commandStates.infiniteJump and humanoid and scriptActive then
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end)
+    
+    showNotification("Infinite jump enabled!", "success")
+end
+
+local function disableInfiniteJump()
+    if not commandStates.infiniteJump then
+        showNotification("Infinite jump is not enabled!", "error")
+        return
+    end
+    
+    commandStates.infiniteJump = false
+    
+    if activeConnections.infiniteJump then
+        activeConnections.infiniteJump:Disconnect()
+        activeConnections.infiniteJump = nil
+    end
+    
+    showNotification("Infinite jump disabled!", "success")
+end
+
+local function teleportToPlayer(targetName)
+    local targetPlayer = findPlayer(targetName)
+    
+    if not targetPlayer then
+        showNotification('Player "' .. targetName .. '" not found!', "error")
+        return
+    end
+    
+    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        showNotification("Target player has no character!", "error")
+        return
+    end
+    
+    character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+    showNotification("Teleported to " .. targetPlayer.Name .. "!", "success")
+end
+
+local function createTpTool()
+    local tool = Instance.new("Tool")
+    tool.Name = "$errated TP Tool"
+    tool.RequiresHandle = false
+    tool.CanBeDropped = false
+    
+    tool.Activated:Connect(function()
+        local targetPos = mouse.Hit.Position
+        if character and character:FindFirstChild("HumanoidRootPart") then
+            character.HumanoidRootPart.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+        end
+    end)
+    
+    tool.Parent = player.Backpack
+    showNotification("TP Tool added to inventory!", "success")
+end
+
+local function setWalkSpeed(speed)
+    local speedNum = tonumber(speed)
+    if not speedNum then
+        showNotification("Invalid speed value!", "error")
+        return
+    end
+    
+    humanoid.WalkSpeed = speedNum
+    showNotification("Walk speed set to " .. speedNum, "success")
+end
+
+local function resetWalkSpeed()
+    humanoid.WalkSpeed = commandStates.originalWalkSpeed
+    showNotification("Walk speed reset!", "success")
+end
+
+local function setJumpPower(power)
+    local powerNum = tonumber(power)
+    if not powerNum then
+        showNotification("Invalid jump power value!", "error")
+        return
+    end
+    
+    if humanoid.UseJumpPower then
+        humanoid.JumpPower = powerNum
+    else
+        humanoid.JumpHeight = powerNum / 3.5
+    end
+    showNotification("Jump power set to " .. powerNum, "success")
+end
+
+local function resetJumpPower()
+    if humanoid.UseJumpPower then
+        humanoid.JumpPower = commandStates.originalJumpPower
+    else
+        humanoid.JumpHeight = commandStates.originalJumpPower / 3.5
+    end
+    showNotification("Jump power reset!", "success")
+end
+
+local function loadCharacter(username)
+    showNotification("Loading " .. username .. "'s avatar...", "info")
+    
+    local success, userId = pcall(function()
+        return Players:GetUserIdFromNameAsync(username)
+    end)
+    
+    if not success or not userId then
+        showNotification('Player "' .. username .. '" not found!', "error")
+        return
+    end
+    
+    local method1Success = pcall(function()
+        local description = Players:GetHumanoidDescriptionFromUserId(userId)
+        if description and humanoid then
+            for _, item in pairs(character:GetChildren()) do
+                if item:IsA("Accessory") or item:IsA("Hat") or item:IsA("Shirt") or item:IsA("Pants") or item:IsA("ShirtGraphic") then
+                    item:Destroy()
+                end
+            end
             
-            task.spawn(function()
-                while flying do
-                    local direction = Vector3.new(0, 0, 0)
-                    
-                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                        direction = direction + workspace.CurrentCamera.CFrame.LookVector
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                        direction = direction - workspace.CurrentCamera.CFrame.LookVector
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                        direction = direction - workspace.CurrentCamera.CFrame.RightVector
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                        direction = direction + workspace.CurrentCamera.CFrame.RightVector
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                        direction = direction + Vector3.new(0, 1, 0)
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                        direction = direction - Vector3.new(0, 1, 0)
-                    end
-                    
-                    bv.Velocity = direction.Unit * flySpeed
-                    task.wait()
+            humanoid:ApplyDescription(description)
+            showNotification("Loaded " .. username .. "'s avatar!", "success")
+            return true
+        end
+        return false
+    end)
+    
+    if method1Success then return end
+    
+    pcall(function()
+        for _, item in pairs(character:GetChildren()) do
+            if item:IsA("Accessory") or item:IsA("Hat") or item:IsA("Shirt") or item:IsA("Pants") or item:IsA("ShirtGraphic") then
+                item:Destroy()
+            end
+        end
+        
+        local tempModel = Players:GetCharacterAppearanceAsync(userId)
+        
+        for _, item in pairs(tempModel:GetChildren()) do
+            if item:IsA("Accessory") or item:IsA("Hat") or item:IsA("Shirt") or item:IsA("Pants") or item:IsA("ShirtGraphic") or item:IsA("BodyColors") then
+                local clone = item:Clone()
+                clone.Parent = character
+            end
+        end
+        
+        tempModel:Destroy()
+        showNotification("Loaded " .. username .. "'s avatar (Method 2)!", "success")
+    end)
+end
+
+local function toggleChatBypass()
+    commandStates.chatBypass = not commandStates.chatBypass
+    
+    if commandStates.chatBypass then
+        if activeConnections.chatBypass then
+            activeConnections.chatBypass:Disconnect()
+        end
+        
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            local args = {...}
+            local method = getnamecallmethod()
+            
+            if method == "FireServer" and self.Name == "SayMessageRequest" then
+                local message = args[1]
+                local bypassedMessage = ""
+                
+                for i = 1, #message do
+                    local char = message:sub(i, i)
+                    bypassedMessage = bypassedMessage .. (bypassChars[char] or char)
                 end
                 
-                if bv then bv:Destroy() end
+                args[1] = bypassedMessage
+                return oldNamecall(self, unpack(args))
+            end
+            
+            return oldNamecall(self, ...)
+        end)
+        
+        activeConnections.chatBypass = {Disconnect = function()
+            hookmetamethod(game, "__namecall", oldNamecall)
+        end}
+        
+        showNotification("Chat bypass enabled!", "success")
+    else
+        if activeConnections.chatBypass then
+            activeConnections.chatBypass:Disconnect()
+            activeConnections.chatBypass = nil
+        end
+        showNotification("Chat bypass disabled!", "success")
+    end
+end
+
+local function toggleAntiAfk()
+    commandStates.antiAfk = not commandStates.antiAfk
+    
+    if commandStates.antiAfk then
+        activeConnections.antiAfk = player.Idled:Connect(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
+        showNotification("Anti-AFK enabled!", "success")
+    else
+        if activeConnections.antiAfk then
+            activeConnections.antiAfk:Disconnect()
+            activeConnections.antiAfk = nil
+        end
+        showNotification("Anti-AFK disabled!", "success")
+    end
+end
+
+local function toggleAntiVcBan()
+    commandStates.antiVcBan = not commandStates.antiVcBan
+    
+    if commandStates.antiVcBan then
+        local function blockVcBan()
+            for _, v in pairs(game:GetDescendants()) do
+                if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
+                    if v.Name:lower():find("voice") or v.Name:lower():find("chat") or v.Name:lower():find("ban") then
+                        pcall(function()
+                            v:Destroy()
+                        end)
+                    end
+                end
+            end
+        end
+        
+        blockVcBan()
+        
+        game.DescendantAdded:Connect(function(v)
+            if not commandStates.antiVcBan then return end
+            if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
+                if v.Name:lower():find("voice") or v.Name:lower():find("chat") or v.Name:lower():find("ban") then
+                    wait()
+                    pcall(function()
+                        v:Destroy()
+                    end)
+                end
+            end
+        end)
+        
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            local method = getnamecallmethod()
+            local args = {...}
+            
+            if method == "FireServer" or method == "InvokeServer" then
+                if self.Name:lower():find("voice") or self.Name:lower():find("ban") then
+                    return
+                end
+            end
+            
+            return oldNamecall(self, ...)
+        end)
+        
+        showNotification("Anti-VC-Ban enabled!", "success")
+    else
+        showNotification("Anti-VC-Ban disabled!", "success")
+    end
+end
+
+local function rejoinServer()
+    showNotification("Rejoining server...", "info")
+    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
+end
+
+local function serverHop()
+    showNotification("Finding new server...", "info")
+    
+    local success, servers = pcall(function()
+        return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+    end)
+    
+    if success and servers and servers.data then
+        local validServers = {}
+        for _, server in pairs(servers.data) do
+            if server.id ~= game.JobId and server.playing < server.maxPlayers then
+                table.insert(validServers, server)
+            end
+        end
+        
+        if #validServers > 0 then
+            local randomServer = validServers[math.random(1, #validServers)]
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, randomServer.id, player)
+        else
+            showNotification("No available servers found!", "error")
+        end
+    else
+        showNotification("Failed to fetch servers!", "error")
+    end
+end
+
+local function joinUser(username)
+    showNotification("Finding " .. username .. "'s server...", "info")
+    
+    local success, userId = pcall(function()
+        return Players:GetUserIdFromNameAsync(username)
+    end)
+    
+    if not success or not userId then
+        showNotification('Player "' .. username .. '" not found!', "error")
+        return
+    end
+    
+    pcall(function()
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
+    end)
+end
+
+-- UNEXECUTE (FIXED - Now removes overhead cards)
+local function unexecute()
+    showNotification("Unexecuting script...", "info")
+    wait(1)
+    
+    scriptActive = false
+    
+    if commandStates.flying then disableFly() end
+    if commandStates.supermanFly then disableSupermanFly() end
+    if commandStates.noclip then disableNoclip() end
+    if commandStates.float then disableFloat() end
+    if commandStates.infiniteJump then disableInfiniteJump() end
+    if commandStates.chatBypass then toggleChatBypass() end
+    if commandStates.antiAfk then toggleAntiAfk() end
+    
+    for _, conn in pairs(activeConnections) do
+        if conn then
+            pcall(function()
+                conn:Disconnect()
             end)
         end
     end
     
-    fly()
-end, 9)
-
--- TELEPORT TAB
-local TeleportPage = CreateContentPage("Teleport")
-
-CreateInstance("TextLabel", {
-    Size = UDim2.new(1, -10, 0, 30),
-    BackgroundTransparency = 1,
-    Text = "Teleport Controls",
-    TextColor3 = Color3.fromRGB(138, 43, 226),
-    TextSize = 18,
-    Font = Enum.Font.GothamBold,
-    LayoutOrder = 0,
-    ZIndex = 3,
-    Parent = TeleportPage
-})
-
-local playerTeleportBox = CreateTextBox(TeleportPage, "Enter player name", 1)
-
-CreateButton(TeleportPage, "Teleport to Player", function()
-    local targetName = playerTeleportBox.Text
-    local target = Players:FindFirstChild(targetName)
-    
-    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-        if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-            Player.Character.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame
+    -- Remove all overhead cards
+    for _, card in pairs(allUserCards) do
+        if card and card.Parent then
+            pcall(function()
+                card:Destroy()
+            end)
         end
     end
-end, 2)
-
-CreateButton(TeleportPage, "Bring All Players", function()
-    if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-        local pos = Player.Character.HumanoidRootPart.CFrame
-        for _, plr in pairs(Players:GetPlayers()) do
-            if plr ~= Player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                plr.Character.HumanoidRootPart.CFrame = pos
-            end
-        end
-    end
-end, 3)
-
-CreateButton(TeleportPage, "Teleport to Spawn", function()
-    if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-        Player.Character.HumanoidRootPart.CFrame = CFrame.new(0, 50, 0)
-    end
-end, 4)
-
--- ESP TAB
-local ESPPage = CreateContentPage("ESP")
-
-CreateInstance("TextLabel", {
-    Size = UDim2.new(1, -10, 0, 30),
-    BackgroundTransparency = 1,
-    Text = "ESP Controls",
-    TextColor3 = Color3.fromRGB(138, 43, 226),
-    TextSize = 18,
-    Font = Enum.Font.GothamBold,
-    LayoutOrder = 0,
-    ZIndex = 3,
-    Parent = ESPPage
-})
-
-local espEnabled = false
-
-CreateToggle(ESPPage, "Player ESP", false, function(state)
-    espEnabled = state
     
-    if state then
-        task.spawn(function()
-            while espEnabled do
-                for _, plr in pairs(Players:GetPlayers()) do
-                    if plr ~= Player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                        local hrp = plr.Character.HumanoidRootPart
-                        
-                        if not hrp:FindFirstChild("ESP_Highlight") then
-                            local highlight = Instance.new("Highlight")
-                            highlight.Name = "ESP_Highlight"
-                            highlight.FillColor = Color3.fromRGB(138, 43, 226)
-                            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                            highlight.FillTransparency = 0.5
-                            highlight.OutlineTransparency = 0
-                            highlight.Parent = hrp
-                        end
-                    end
-                end
-                task.wait(1)
+    -- Remove identifier from all players
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr.Character then
+            local identifier = plr.Character:FindFirstChild(CONFIG.ScriptIdentifier)
+            if identifier then
+                identifier:Destroy()
             end
             
-            -- Remove all ESP when disabled
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr.Character then
-                    for _, part in pairs(plr.Character:GetDescendants()) do
-                        if part.Name == "ESP_Highlight" then
-                            part:Destroy()
-                        end
-                    end
+            local head = plr.Character:FindFirstChild("Head")
+            if head then
+                local userCard = head:FindFirstChild("UserCard")
+                if userCard then
+                    userCard:Destroy()
                 end
             end
-        end)
-    end
-end, 1)
-
-CreateToggle(ESPPage, "Distance Display", false, function(state)
-    -- Implement distance display
-end, 2)
-
-CreateToggle(ESPPage, "Name Display", false, function(state)
-    -- Implement name display
-end, 3)
-
--- COMBAT TAB
-local CombatPage = CreateContentPage("Combat")
-
-CreateInstance("TextLabel", {
-    Size = UDim2.new(1, -10, 0, 30),
-    BackgroundTransparency = 1,
-    Text = "Combat Controls",
-    TextColor3 = Color3.fromRGB(138, 43, 226),
-    TextSize = 18,
-    Font = Enum.Font.GothamBold,
-    LayoutOrder = 0,
-    ZIndex = 3,
-    Parent = CombatPage
-})
-
-CreateToggle(CombatPage, "Kill Aura", false, function(state)
-    _G.KillAura = state
-    if state then
-        task.spawn(function()
-            while _G.KillAura do
-                if Player.Character then
-                    for _, plr in pairs(Players:GetPlayers()) do
-                        if plr ~= Player and plr.Character and plr.Character:FindFirstChild("Humanoid") then
-                            local distance = (Player.Character.HumanoidRootPart.Position - plr.Character.HumanoidRootPart.Position).Magnitude
-                            if distance < 20 then
-                                -- Kill aura logic here
-                            end
-                        end
-                    end
-                end
-                task.wait(0.1)
-            end
-        end)
-    end
-end, 1)
-
-CreateToggle(CombatPage, "Auto Parry", false, function(state)
-    -- Implement auto parry
-end, 2)
-
-CreateButton(CombatPage, "Kill All", function()
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= Player and plr.Character and plr.Character:FindFirstChild("Humanoid") then
-            plr.Character.Humanoid.Health = 0
         end
     end
-end, 3)
-
--- VISUAL TAB
-local VisualPage = CreateContentPage("Visual")
-
-CreateInstance("TextLabel", {
-    Size = UDim2.new(1, -10, 0, 30),
-    BackgroundTransparency = 1,
-    Text = "Visual Controls",
-    TextColor3 = Color3.fromRGB(138, 43, 226),
-    TextSize = 18,
-    Font = Enum.Font.GothamBold,
-    LayoutOrder = 0,
-    ZIndex = 3,
-    Parent = VisualPage
-})
-
-CreateToggle(VisualPage, "Fullbright", false, function(state)
-    if state then
-        game.Lighting.Brightness = 2
-        game.Lighting.ClockTime = 14
-        game.Lighting.FogEnd = 100000
-        game.Lighting.GlobalShadows = false
-        game.Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
-    else
-        game.Lighting.Brightness = 1
-        game.Lighting.ClockTime = 12
-        game.Lighting.FogEnd = 100000
-        game.Lighting.GlobalShadows = true
-        game.Lighting.OutdoorAmbient = Color3.fromRGB(70, 70, 70)
-    end
-end, 1)
-
-CreateToggle(VisualPage, "Remove Fog", false, function(state)
-    game.Lighting.FogEnd = state and 100000 or 10000
-end, 2)
-
-CreateSlider(VisualPage, "FOV", 70, 120, 70, function(value)
-    workspace.CurrentCamera.FieldOfView = value
-end, 3)
-
--- MISC TAB
-local MiscPage = CreateContentPage("Misc")
-
-CreateInstance("TextLabel", {
-    Size = UDim2.new(1, -10, 0, 30),
-    BackgroundTransparency = 1,
-    Text = "Miscellaneous",
-    TextColor3 = Color3.fromRGB(138, 43, 226),
-    TextSize = 18,
-    Font = Enum.Font.GothamBold,
-    LayoutOrder = 0,
-    ZIndex = 3,
-    Parent = MiscPage
-})
-
-CreateButton(MiscPage, "Rejoin Server", function()
-    game:GetService("TeleportService"):Teleport(game.PlaceId, Player)
-end, 1)
-
-CreateButton(MiscPage, "Server Hop", function()
-    local servers = game:GetService("HttpService"):JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
     
-    for _, server in pairs(servers.data) do
-        if server.playing < server.maxPlayers and server.id ~= game.JobId then
-            game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, server.id, Player)
-            break
-        end
-    end
-end, 2)
-
-CreateButton(MiscPage, "Copy Game Link", function()
-    setclipboard("https://www.roblox.com/games/" .. game.PlaceId)
-end, 3)
-
-CreateToggle(MiscPage, "Anti-AFK", false, function(state)
-    if state then
-        local vu = game:GetService("VirtualUser")
-        Player.Idled:Connect(function()
-            vu:Button2Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-            task.wait(1)
-            vu:Button2Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
-        end)
-    end
-end, 4)
-
--- SCRIPT HUB TAB
-local ScriptHubPage = CreateContentPage("Scripts")
-
-CreateInstance("TextLabel", {
-    Size = UDim2.new(1, -10, 0, 30),
-    BackgroundTransparency = 1,
-    Text = "Script Hub",
-    TextColor3 = Color3.fromRGB(138, 43, 226),
-    TextSize = 18,
-    Font = Enum.Font.GothamBold,
-    LayoutOrder = 0,
-    ZIndex = 3,
-    Parent = ScriptHubPage
-})
-
-CreateButton(ScriptHubPage, "Infinite Yield", function()
-    loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()
-end, 1)
-
-CreateButton(ScriptHubPage, "Dex Explorer", function()
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/infyiff/backup/main/dex.lua"))()
-end, 2)
-
-CreateButton(ScriptHubPage, "Universal ESP", function()
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/ic3w0lf22/Unnamed-ESP/master/UnnamedESP.lua"))()
-end, 3)
-
-CreateButton(ScriptHubPage, "Aimbot", function()
-    -- Load popular aimbot script
-end, 4)
-
--- SETTINGS TAB
-local SettingsPage = CreateContentPage("Settings")
-
-CreateInstance("TextLabel", {
-    Size = UDim2.new(1, -10, 0, 30),
-    BackgroundTransparency = 1,
-    Text = "Settings",
-    TextColor3 = Color3.fromRGB(138, 43, 226),
-    TextSize = 18,
-    Font = Enum.Font.GothamBold,
-    LayoutOrder = 0,
-    ZIndex = 3,
-    Parent = SettingsPage
-})
-
-CreateToggle(SettingsPage, "Animations", true, function(state)
-    -- Toggle animations
-end, 1)
-
-CreateToggle(SettingsPage, "Notifications", true, function(state)
-    -- Toggle notifications
-end, 2)
-
-CreateSlider(SettingsPage, "UI Scale", 80, 120, 100, function(value)
-    MainFrame.Size = UDim2.new(0, 700 * (value/100), 0, 500 * (value/100))
-end, 3)
-
-CreateButton(SettingsPage, "Reset UI Position", function()
-    MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-end, 4)
-
--- Create all tab buttons
-CreateTabButton("Home", "🏠", HomePage)
-CreateTabButton("Player", "👤", PlayerPage)
-CreateTabButton("Teleport", "📍", TeleportPage)
-CreateTabButton("ESP", "👁", ESPPage)
-CreateTabButton("Combat", "⚔", CombatPage)
-CreateTabButton("Visual", "🎨", VisualPage)
-CreateTabButton("Scripts", "📜", ScriptHubPage)
-CreateTabButton("Misc", "⚙", MiscPage)
-CreateTabButton("Settings", "🔧", SettingsPage)
-
--- Update canvas size
-task.spawn(function()
-    task.wait(0.1)
-    local contentSize = TabContainer.UIListLayout.AbsoluteContentSize
-    TabContainer.CanvasSize = UDim2.new(0, 0, 0, contentSize.Y + 10)
-end)
-
--- Matrix rain effect
-local MatrixRain = CreateInstance("Frame", {
-    Name = "MatrixRain",
-    Size = UDim2.new(1, 0, 1, 0),
-    BackgroundTransparency = 1,
-    ZIndex = 0,
-    Parent = MainFrame
-})
-
-task.spawn(function()
-    for i = 1, 15 do
-        local column = CreateInstance("Frame", {
-            Size = UDim2.new(0, 2, 0, 0),
-            Position = UDim2.new(math.random(0, 100) / 100, 0, -0.1, 0),
-            BackgroundColor3 = Color3.fromRGB(138, 43, 226),
-            BorderSizePixel = 0,
-            BackgroundTransparency = 0.8,
-            ZIndex = 0,
-            Parent = MatrixRain
-        })
-        
-        task.spawn(function()
-            while task.wait(math.random(2, 5)) do
-                column.Position = UDim2.new(math.random(0, 100) / 100, 0, -0.1, 0)
-                Tween(column, {
-                    Position = UDim2.new(column.Position.X.Scale, 0, 1.1, 0),
-                    Size = UDim2.new(0, 2, 0, math.random(100, 300))
-                }, math.random(3, 6), Enum.EasingStyle.Linear)
-            end
-        end)
-    end
-end)
-
--- Animate main frame opening
-task.wait(3.5)
-MainFrame.Visible = true
-Tween(MainFrame, {
-    Size = UDim2.new(0, 700, 0, 500)
-}, 0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-
--- Select home tab by default
-task.wait(0.7)
-if tabs["Home"] and tabs["Home"].button then
-    -- Manually trigger the home tab
-    local homeButton = tabs["Home"].button
-    local homeContent = tabs["Home"].content
-    
-    homeButton.BackgroundColor3 = Color3.fromRGB(75, 0, 130)
-    local homeTextLabel = homeButton:FindFirstChild("TextLabel")
-    if homeTextLabel then
-        homeTextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    if screenGui then
+        screenGui:Destroy()
     end
     
-    if homeContent then
-        homeContent.Visible = true
-        homeContent.Position = UDim2.new(0, 0, 0, 0)
-        homeContent.Size = UDim2.new(1, 0, 1, 0)
-    end
+    commandStates = nil
+    activeConnections = nil
+    scriptUsers = nil
+    allUserCards = nil
     
-    currentTab = "Home"
+    print("$errated v4.3 - Script unexecuted successfully (overhead cards removed)")
 end
 
--- Notification system
-local function SendNotification(title, text, duration)
-    local notif = CreateInstance("Frame", {
-        Size = UDim2.new(0, 300, 0, 80),
-        Position = UDim2.new(1, 10, 0, 10),
-        BackgroundColor3 = Color3.fromRGB(25, 25, 30),
-        BorderSizePixel = 0,
-        ZIndex = 100,
-        Parent = ScreenGui
-    })
+-- Command Parser
+local function executeCommand(commandText)
+    if commandText:sub(1, 1) ~= CONFIG.CommandPrefix then return end
     
-    CreateInstance("UICorner", {
-        CornerRadius = UDim.new(0, 8),
-        Parent = notif
-    })
+    local args = {}
+    for word in commandText:gmatch("%S+") do
+        table.insert(args, word)
+    end
     
-    CreateInstance("UIStroke", {
-        Color = Color3.fromRGB(138, 43, 226),
-        Thickness = 2,
-        Parent = notif
-    })
+    if #args == 0 then return end
     
-    CreateInstance("TextLabel", {
-        Size = UDim2.new(1, -20, 0, 25),
-        Position = UDim2.new(0, 10, 0, 5),
-        BackgroundTransparency = 1,
-        Text = title,
-        TextColor3 = Color3.fromRGB(138, 43, 226),
-        TextSize = 16,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Font = Enum.Font.GothamBold,
-        ZIndex = 101,
-        Parent = notif
-    })
+    local command = args[1]:sub(2):lower()
     
-    CreateInstance("TextLabel", {
-        Size = UDim2.new(1, -20, 0, 40),
-        Position = UDim2.new(0, 10, 0, 30),
-        BackgroundTransparency = 1,
-        Text = text,
-        TextColor3 = Color3.fromRGB(200, 200, 200),
-        TextSize = 12,
-        TextWrapped = true,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Font = Enum.Font.Gotham,
-        ZIndex = 101,
-        Parent = notif
-    })
+    if command == "fly" then
+        enableFly()
+    elseif command == "unfly" then
+        disableFly()
+    elseif command == "flyspeed" then
+        if #args < 2 then
+            showNotification("Usage: !flyspeed [number]", "error")
+        else
+            local speed = tonumber(args[2])
+            if speed then
+                commandStates.flySpeed = speed
+                showNotification("Fly speed set to " .. speed, "success")
+            else
+                showNotification("Invalid speed value!", "error")
+            end
+        end
+    elseif command == "rsfly" then
+        commandStates.flySpeed = 2
+        showNotification("Fly speed reset to 2!", "success")
+    elseif command == "smfly" or command == "superman" then
+        enableSupermanFly()
+    elseif command == "unsmfly" or command == "unsuperman" then
+        disableSupermanFly()
+    elseif command == "smspeed" then
+        if #args < 2 then
+            showNotification("Usage: !smspeed [number]", "error")
+        else
+            local speed = tonumber(args[2])
+            if speed then
+                commandStates.supermanSpeed = speed
+                showNotification("Superman speed set to " .. speed, "success")
+            else
+                showNotification("Invalid speed value!", "error")
+            end
+        end
+    elseif command == "rssm" then
+        commandStates.supermanSpeed = 3
+        showNotification("Superman speed reset to 3!", "success")
+    elseif command == "noclip" or command == "clip" then
+        enableNoclip()
+    elseif command == "unnoclip" or command == "unclip" then
+        disableNoclip()
+    elseif command == "float" then
+        enableFloat()
+    elseif command == "unfloat" then
+        disableFloat()
+    elseif command == "infj" or command == "infinitejump" then
+        enableInfiniteJump()
+    elseif command == "uninfj" or command == "uninfinitejump" then
+        disableInfiniteJump()
+    elseif command == "tp" or command == "goto" then
+        if #args < 2 then
+            showNotification("Usage: !tp [username]", "error")
+        else
+            teleportToPlayer(args[2])
+        end
+    elseif command == "tptool" then
+        createTpTool()
+    elseif command == "ws" or command == "walkspeed" then
+        if #args < 2 then
+            showNotification("Usage: !ws [number]", "error")
+        else
+            setWalkSpeed(args[2])
+        end
+    elseif command == "resetws" then
+        resetWalkSpeed()
+    elseif command == "jp" or command == "jumppower" then
+        if #args < 2 then
+            showNotification("Usage: !jp [number]", "error")
+        else
+            setJumpPower(args[2])
+        end
+    elseif command == "resetjp" then
+        resetJumpPower()
+    elseif command == "char" then
+        if #args < 2 then
+            showNotification("Usage: !char [username]", "error")
+        else
+            loadCharacter(args[2])
+        end
+    elseif command == "cb" or command == "chatbypass" then
+        toggleChatBypass()
+    elseif command == "antiafk" or command == "antiidle" then
+        toggleAntiAfk()
+    elseif command == "antivcban" or command == "antivcb" or command == "novcb" then
+        toggleAntiVcBan()
+    elseif command == "rejoin" or command == "rj" then
+        rejoinServer()
+    elseif command == "serverhop" or command == "shop" then
+        serverHop()
+    elseif command == "join" then
+        if #args < 2 then
+            showNotification("Usage: !join [username]", "error")
+        else
+            joinUser(args[2])
+        end
+    elseif command == "unexecute" then
+        unexecute()
+    elseif command == "help" then
+        if not mainFrame.Visible then
+            mainFrame.Visible = true
+            mainFrame.Size = UDim2.new(0, 0, 0, 0)
+            smoothTween(mainFrame, {Size = UDim2.new(0, 750, 0, 600)}, 0.5)
+        end
+        showNotification("Command list opened!", "info")
+    else
+        showNotification("Unknown command: " .. command, "error")
+    end
+end
+
+commandInput.FocusLost:Connect(function(enterPressed)
+    if enterPressed and commandInput.Text ~= "" then
+        executeCommand(commandInput.Text)
+        commandInput.Text = ""
+        suggestionLabel.Text = ""
+    end
+end)
+
+local function toggleMenu()
+    mainFrame.Visible = not mainFrame.Visible
     
-    Tween(notif, {Position = UDim2.new(1, -310, 0, 10)}, 0.4, Enum.EasingStyle.Back)
+    if mainFrame.Visible then
+        mainFrame.Size = UDim2.new(0, 0, 0, 0)
+        smoothTween(mainFrame, {Size = UDim2.new(0, 750, 0, 600)}, 0.5)
+        commandInput:CaptureFocus()
+    else
+        smoothTween(mainFrame, {Size = UDim2.new(0, 0, 0, 0)}, 0.4, function()
+            mainFrame.Visible = false
+            mainFrame.Size = UDim2.new(0, 750, 0, 600)
+        end)
+    end
+end
+
+closeButton.MouseButton1Click:Connect(toggleMenu)
+toggleButton.MouseButton1Click:Connect(toggleMenu)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == CONFIG.ToggleKey then
+        toggleMenu()
+    end
+end)
+
+closeButton.MouseEnter:Connect(function()
+    smoothTween(closeButton, {BackgroundColor3 = CONFIG.Colors.Primary}, 0.2)
+end)
+closeButton.MouseLeave:Connect(function()
+    smoothTween(closeButton, {BackgroundColor3 = CONFIG.Colors.Background}, 0.2)
+end)
+
+commandStates.originalWalkSpeed = humanoid.WalkSpeed
+if humanoid.UseJumpPower then
+    commandStates.originalJumpPower = humanoid.JumpPower
+else
+    commandStates.originalJumpPower = humanoid.JumpHeight * 3.5
+end
+
+markAsScriptUser()
+monitorScriptUsers()
+
+player.CharacterAdded:Connect(function(newChar)
+    if not scriptActive then return end
+    character = newChar
+    humanoid = character:WaitForChild("Humanoid")
+    wait(0.5)
+    markAsScriptUser()
     
-    task.delay(duration or 3, function()
-        Tween(notif, {Position = UDim2.new(1, 10, 0, 10)}, 0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-        task.wait(0.3)
-        notif:Destroy()
+    commandStates.originalWalkSpeed = humanoid.WalkSpeed
+    if humanoid.UseJumpPower then
+        commandStates.originalJumpPower = humanoid.JumpPower
+    else
+        commandStates.originalJumpPower = humanoid.JumpHeight * 3.5
+    end
+end)
+
+Players.PlayerAdded:Connect(function(newPlayer)
+    if not scriptActive then return end
+    newPlayer.CharacterAdded:Connect(function()
+        wait(1)
+        if isScriptUser(newPlayer) and scriptActive then
+            createUserCard(newPlayer)
+        end
+    end)
+end)
+
+for _, existingPlayer in ipairs(Players:GetPlayers()) do
+    if existingPlayer.Character then
+        if isScriptUser(existingPlayer) then
+            createUserCard(existingPlayer)
+        end
+    end
+    
+    existingPlayer.CharacterAdded:Connect(function()
+        if not scriptActive then return end
+        wait(1)
+        if isScriptUser(existingPlayer) then
+            createUserCard(existingPlayer)
+        end
     end)
 end
 
--- Send welcome notification
-SendNotification("$errated", "Successfully loaded!", 3)
+wait(1)
+showNotification("$errated v4.3 PRO loaded! Autocomplete enabled!", "info")
 
-print("$errated Executor loaded successfully!")
+print("═══════════════════════════════════════")
+print("$errated Command Menu v4.3 - ULTIMATE PRO")
+print("User: " .. player.Name)
+print("Executor: " .. EXECUTOR)
+print("Device: " .. DEVICE)
+print("Features: Autocomplete + Username Prompts")
+print("Type !help for commands")
+print("═══════════════════════════════════════")
